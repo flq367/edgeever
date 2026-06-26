@@ -154,6 +154,52 @@ bunx wrangler r2 bucket create edgeever-resources
 EDGE_EVER_D1_DATABASE_ID=<你的 D1 database_id>
 ```
 
+## 多实例部署
+
+EdgeEver 推荐用多个 Worker + 多套 D1/R2 来做实例隔离。比如私人实例和公开演示实例：
+
+```text
+tianma.edgeever.org -> edgeever-tianma -> edgeever-tianma D1 + edgeever-tianma-resources R2
+demo.edgeever.org   -> edgeever-demo   -> edgeever-demo D1   + edgeever-demo-resources R2
+```
+
+本地 `.env.local` 可以按 `.env.local.example` 填入实例专属变量：
+
+```text
+EDGE_EVER_TIANMA_WORKER_NAME=edgeever-tianma
+EDGE_EVER_TIANMA_CUSTOM_DOMAIN=tianma.edgeever.org
+EDGE_EVER_TIANMA_D1_DATABASE_ID=<tianma D1 database_id>
+EDGE_EVER_TIANMA_R2_BUCKET_NAME=edgeever-tianma-resources
+
+EDGE_EVER_DEMO_WORKER_NAME=edgeever-demo
+EDGE_EVER_DEMO_CUSTOM_DOMAIN=demo.edgeever.org
+EDGE_EVER_DEMO_D1_DATABASE_ID=<demo D1 database_id>
+EDGE_EVER_DEMO_R2_BUCKET_NAME=edgeever-demo-resources
+```
+
+部署单个实例：
+
+```sh
+bun run deploy:tianma
+bun run deploy:demo
+```
+
+同时部署两个实例：
+
+```sh
+bun run deploy:all
+```
+
+如果用 Cloudflare Git 自动构建，每个 Worker 都可以连接同一个 GitHub 仓库，但需要分别配置自己的 Build Variables。至少要设置：
+
+```text
+EDGE_EVER_WORKER_NAME=<实例 Worker 名>
+EDGE_EVER_CUSTOM_DOMAIN=<实例域名>
+EDGE_EVER_D1_DATABASE_ID=<实例 D1 database_id>
+EDGE_EVER_R2_BUCKET_NAME=<实例 R2 bucket>
+EDGE_EVER_R2_PREVIEW_BUCKET_NAME=<实例 R2 preview bucket>
+```
+
 应用本地迁移：
 
 ```sh

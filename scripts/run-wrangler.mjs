@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const PLACEHOLDER_D1_ID = "00000000-0000-0000-0000-000000000000";
@@ -12,8 +12,45 @@ if (wranglerArgs.length === 0) {
   process.exit(1);
 }
 
+const loadLocalEnv = () => {
+  const envPath = resolve(".env.local");
+  if (!existsSync(envPath)) {
+    return;
+  }
+
+  const lines = readFileSync(envPath, "utf8").split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    const key = trimmed.slice(0, separatorIndex).trim();
+    let value = trimmed.slice(separatorIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+};
+
+loadLocalEnv();
+
 const baseConfigPath = resolve(process.env.WRANGLER_CONFIG ?? "wrangler.toml");
-const generatedConfigPath = resolve(".wrangler.generated.toml");
+const instance = process.env.EDGE_EVER_INSTANCE?.trim();
+const instanceKey = instance?.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+const generatedConfigPath = resolve(
+  instanceKey
+    ? `.wrangler.generated.${instanceKey.toLowerCase()}.toml`
+    : ".wrangler.generated.toml",
+);
 let config = readFileSync(baseConfigPath, "utf8");
 let changed = false;
 
@@ -31,7 +68,34 @@ const replaceTomlValue = (source, key, value) => {
   return source.replace(pattern, `$1${value}$2`);
 };
 
-const d1DatabaseId = process.env.EDGE_EVER_D1_DATABASE_ID?.trim();
+const envValue = (name) => {
+  const scopedName = instanceKey ? `EDGE_EVER_${instanceKey}_${name}` : undefined;
+  return (scopedName ? process.env[scopedName] : undefined)?.trim()
+    || process.env[`EDGE_EVER_${name}`]?.trim();
+};
+
+const workerName = envValue("WORKER_NAME");
+if (workerName) {
+  config = replaceTomlValue(config, "name", workerName);
+}
+
+const workersDev = envValue("WORKERS_DEV");
+if (workersDev) {
+  const normalized = workersDev.toLowerCase();
+  if (!["true", "false"].includes(normalized)) {
+    throw new Error("EDGE_EVER_WORKERS_DEV must be true or false.");
+  }
+
+  const pattern = /^workers_dev\s*=\s*(true|false)/m;
+  if (!pattern.test(config)) {
+    throw new Error(`Cannot find workers_dev in ${baseConfigPath}`);
+  }
+
+  changed = true;
+  config = config.replace(pattern, `workers_dev = ${normalized}`);
+}
+
+const d1DatabaseId = envValue("D1_DATABASE_ID");
 if (d1DatabaseId) {
   if (!UUID_PATTERN.test(d1DatabaseId)) {
     throw new Error("EDGE_EVER_D1_DATABASE_ID must be a Cloudflare D1 UUID.");
@@ -40,21 +104,25 @@ if (d1DatabaseId) {
   config = replaceTomlValue(config, "database_id", d1DatabaseId);
 }
 
-config = replaceTomlValue(
-  config,
-  "database_name",
-  process.env.EDGE_EVER_D1_DATABASE_NAME?.trim(),
-);
-config = replaceTomlValue(
-  config,
-  "bucket_name",
-  process.env.EDGE_EVER_R2_BUCKET_NAME?.trim(),
-);
+config = replaceTomlValue(config, "database_name", envValue("D1_DATABASE_NAME"));
+config = replaceTomlValue(config, "bucket_name", envValue("R2_BUCKET_NAME"));
 config = replaceTomlValue(
   config,
   "preview_bucket_name",
-  process.env.EDGE_EVER_R2_PREVIEW_BUCKET_NAME?.trim(),
+  envValue("R2_PREVIEW_BUCKET_NAME"),
 );
+
+const customDomain = envValue("CUSTOM_DOMAIN");
+const routePattern = envValue("ROUTE_PATTERN") || customDomain;
+if (routePattern) {
+  changed = true;
+  config = `${config.trimEnd()}
+
+[[routes]]
+pattern = "${routePattern}"
+custom_domain = ${customDomain ? "true" : "false"}
+`;
+}
 
 const isRemoteCommand =
   wranglerArgs.includes("deploy") || wranglerArgs.includes("--remote");
@@ -62,7 +130,9 @@ if (isRemoteCommand && config.includes(`database_id = "${PLACEHOLDER_D1_ID}"`)) 
   console.error(
     [
       "Missing Cloudflare D1 database id.",
-      "Set EDGE_EVER_D1_DATABASE_ID as a Cloudflare Build Variable,",
+      instanceKey
+        ? `Set EDGE_EVER_${instanceKey}_D1_DATABASE_ID or EDGE_EVER_D1_DATABASE_ID,`
+        : "Set EDGE_EVER_D1_DATABASE_ID,",
       "or replace the database_id placeholder in wrangler.toml / WRANGLER_CONFIG.",
     ].join(" "),
   );
@@ -74,7 +144,16 @@ if (changed) {
   writeFileSync(generatedConfigPath, config);
 }
 
-const executable = process.platform === "win32" ? "wrangler.cmd" : "wrangler";
+const localWrangler = resolve(
+  "node_modules",
+  ".bin",
+  process.platform === "win32" ? "wrangler.cmd" : "wrangler",
+);
+const executable = existsSync(localWrangler)
+  ? localWrangler
+  : process.platform === "win32"
+    ? "wrangler.cmd"
+    : "wrangler";
 const result = spawnSync(executable, ["--config", configPath, ...wranglerArgs], {
   stdio: "inherit",
   shell: process.platform === "win32",

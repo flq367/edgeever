@@ -17,7 +17,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:migrate:local": "bun scripts/run-wrangler.mjs d1 migrations apply DB --local",
     "db:migrate:remote": "bun scripts/run-wrangler.mjs d1 migrations apply DB --remote",
-    "deploy": "bun run build && bun run db:migrate:remote && bun scripts/run-wrangler.mjs deploy"
+    "deploy": "bun run build && bun run db:migrate:remote && bun scripts/run-wrangler.mjs deploy",
+    "deploy:tianma": "EDGE_EVER_INSTANCE=tianma bun run deploy",
+    "deploy:demo": "EDGE_EVER_INSTANCE=demo bun run deploy",
+    "deploy:all": "bun run deploy:tianma && bun run deploy:demo"
   },
   "cloudflare": {
     "bindings": {
