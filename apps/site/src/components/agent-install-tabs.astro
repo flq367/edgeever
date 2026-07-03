@@ -47,14 +47,47 @@ const promptText =
 
     <div class="agent-install-panel hidden" data-tab-panel="manual">
       <p class="mx-auto max-w-3xl text-center text-lg leading-9 text-slate-600">
-        手动安装适合熟悉 Cloudflare 与命令行的用户。准备好 Fork 仓库和 Cloudflare 登录态后，按顺序执行下面命令。
+        手动安装适合熟悉 Cloudflare 与命令行的用户。先 Fork 仓库，再从你自己的 Fork 仓库部署。
       </p>
 
-      <div class="mx-auto mt-8 max-w-3xl rounded-2xl bg-white p-6 font-mono text-sm leading-7 text-slate-800 shadow-sm">
-        <pre class="whitespace-pre-wrap">bun install
-EDGE_EVER_PASSWORD='&lt;首次登录密码&gt;' bun run deploy:setup
+      <div class="mx-auto mt-8 grid max-w-3xl gap-4">
+        <div class="rounded-2xl bg-white p-6 shadow-sm">
+          <p class="text-sm font-semibold text-brand-text">第一步</p>
+          <h3 class="mt-2 text-xl font-bold text-slate-900">Fork 官方仓库</h3>
+          <pre class="mt-4 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800">https://github.com/msh01/edgeever</pre>
+        </div>
+
+        <div class="rounded-2xl bg-white p-6 shadow-sm">
+          <p class="text-sm font-semibold text-brand-text">第二步</p>
+          <h3 class="mt-2 text-xl font-bold text-slate-900">Clone 你的 Fork 仓库</h3>
+          <pre class="mt-4 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800">git clone &lt;你的 Fork 仓库 URL&gt;
+cd edgeever</pre>
+        </div>
+
+        <div class="rounded-2xl bg-white p-6 shadow-sm">
+          <p class="text-sm font-semibold text-brand-text">第三步</p>
+          <h3 class="mt-2 text-xl font-bold text-slate-900">使用自动化辅助命令部署</h3>
+          <pre class="mt-4 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800">cp .env.local.example .env.local
+bun install
+EDGE_EVER_PASSWORD='&lt;你的密码&gt;' bun run deploy:setup
 bun run deploy:doctor
 bun run deploy</pre>
+        </div>
+
+        <details class="rounded-2xl bg-white p-6 shadow-sm">
+          <summary class="cursor-pointer text-base font-semibold text-slate-900">
+            手动创建 Cloudflare 资源
+          </summary>
+          <pre class="mt-4 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800">cp .env.local.example .env.local
+bun install
+bunx wrangler d1 create edgeever
+bunx wrangler r2 bucket create edgeever-resources
+bun run auth:hash -- &lt;你的密码&gt;
+bun run deploy</pre>
+          <p class="mt-4 text-sm leading-6 text-slate-500">
+            把 D1 创建命令返回的 database_id 和密码 hash 填入本机 .env.local。
+          </p>
+        </details>
       </div>
     </div>
   </div>

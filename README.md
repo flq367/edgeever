@@ -2,7 +2,7 @@
 
 > **EdgeEver: A self-hosted, Cloudflare-native Evernote alternative.**
 >
-> **EdgeEver：基于 Cloudflare 全家桶自托管的开源『印象笔记』。**
+> **EdgeEver：基于 Cloudflare 全家桶自托管的免费开源『印象笔记』。**
 
 EdgeEver 是一个开源、自托管、Cloudflare-native 的现代笔记工作区。它保留经典印象笔记的三栏体验，同时提供清晰的数据模型、REST API、OpenAPI schema 和 MCP endpoint。
 > 依托 Cloudflare 的免费额度，个人自部署后几乎可以永久零成本使用
