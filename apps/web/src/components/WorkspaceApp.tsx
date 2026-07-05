@@ -13,7 +13,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { Home, Search, UserRound, Plus, ChevronDown, ChevronRight, RefreshCw, X } from "lucide-react";
+import { Check, Home, Search, UserRound, Plus, ChevronDown, ChevronRight, RefreshCw, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -624,6 +624,122 @@ const MobileNotebookPickerItem = ({
   );
 };
 
+const CreateMemoNotebookPicker = ({
+  notebooks,
+  defaultNotebookId,
+  isCreating,
+  onClose,
+  onCreate,
+}: {
+  notebooks: Notebook[];
+  defaultNotebookId: string | null;
+  isCreating: boolean;
+  onClose: () => void;
+  onCreate: (notebookId: string) => void;
+}) => {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState("");
+  const options = useMemo(() => getNotebookMoveOptions(notebooks), [notebooks]);
+  const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
+  const filteredOptions = useMemo(
+    () =>
+      normalizedQuery
+        ? options.filter((option) => option.name.toLocaleLowerCase("zh-CN").includes(normalizedQuery))
+        : options,
+    [normalizedQuery, options]
+  );
+  const defaultNotebookName =
+    options.find((option) => option.id === defaultNotebookId)?.name ?? t("createMemoNotebookPicker.defaultFallback");
+
+  useEffect(() => {
+    window.setTimeout(() => {
+      if (!defaultNotebookId) {
+        return;
+      }
+      document
+        .querySelector<HTMLElement>(`[data-create-memo-notebook-id="${CSS.escape(defaultNotebookId)}"]`)
+        ?.scrollIntoView({ block: "center" });
+    }, 0);
+  }, [defaultNotebookId]);
+
+  return (
+    <Drawer open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DrawerContent className="inset-x-0 max-h-[82dvh] overflow-hidden border-x-0 border-b-0 pb-[env(safe-area-inset-bottom)]">
+        <header className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
+          <DrawerHeader className="min-w-0 p-0">
+            <DrawerTitle className="text-base">{t("createMemoNotebookPicker.title")}</DrawerTitle>
+            <DrawerDescription className="truncate">
+              {t("createMemoNotebookPicker.defaultNotebook", { name: defaultNotebookName })}
+            </DrawerDescription>
+          </DrawerHeader>
+          <Button size="icon" variant="ghost" title={t("common.close")} aria-label={t("common.close")} onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </header>
+        <div className="border-b border-slate-100 px-4 py-2">
+          <div className="flex h-9 items-center gap-2 rounded-md bg-slate-100 px-3 text-sm text-slate-500">
+            <Search className="h-4 w-4" />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-400"
+              value={query}
+              placeholder={t("createMemoNotebookPicker.searchPlaceholder")}
+              aria-label={t("createMemoNotebookPicker.searchPlaceholder")}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            {query && (
+              <button
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-white hover:text-slate-700"
+                type="button"
+                title={t("mobileNotebookPicker.clearSearch")}
+                aria-label={t("mobileNotebookPicker.clearSearch")}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => setQuery("")}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="max-h-[calc(82dvh_-_8.25rem_-_env(safe-area-inset-bottom))] overflow-y-auto p-2">
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((option) => {
+              const isDefault = option.id === defaultNotebookId;
+
+              return (
+                <button
+                  key={option.id}
+                  className={cn(
+                    "mb-1 flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition",
+                    isDefault ? "bg-emerald-50 font-semibold text-emerald-900" : "text-slate-800 hover:bg-slate-50"
+                  )}
+                  type="button"
+                  disabled={isCreating}
+                  data-create-memo-notebook-id={option.id}
+                  onClick={() => onCreate(option.id)}
+                >
+                  <span className="min-w-0 flex-1 truncate text-base">{option.selectLabel}</span>
+                  {isDefault && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                      <Check className="h-3 w-3" />
+                      {t("createMemoNotebookPicker.defaultBadge")}
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          ) : (
+            <div className="px-3 py-8 text-center text-sm font-medium text-slate-700">
+              {normalizedQuery
+                ? t("createMemoNotebookPicker.noSearchResult", { query })
+                : t("createMemoNotebookPicker.noNotebook")}
+            </div>
+          )}
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+};
+
 export const WorkspaceApp = ({
   authRequired,
   user,
@@ -661,6 +777,8 @@ export const WorkspaceApp = ({
   );
   const [tagsOpen, setTagsOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [createMemoNotebookPickerOpen, setCreateMemoNotebookPickerOpen] = useState(false);
+  const [pendingCreateMemoTemplate, setPendingCreateMemoTemplate] = useState<MemoTemplate | undefined>();
   const [mobileNotebookPickerOpen, setMobileNotebookPickerOpen] = useState(false);
   const [mobileBottomNavActive, setMobileBottomNavActive] = useState<MobileBottomNavItem>(() =>
     isInitialSettingsRoute ? "settings" : "home"
@@ -763,8 +881,9 @@ export const WorkspaceApp = ({
     appNoticeDialog ||
       notebookDeleteConfirmation ||
 	      notebookNameDialog ||
-	      memoDeleteConfirmation ||
+      memoDeleteConfirmation ||
       emptyTrashConfirmationOpen ||
+      createMemoNotebookPickerOpen ||
 	      mobileNotebookPickerOpen ||
 	      mobileListActionsOpen ||
 	      mobileMoveOpen ||
@@ -785,6 +904,7 @@ export const WorkspaceApp = ({
       !notebookNameDialog &&
       !memoDeleteConfirmation &&
       !emptyTrashConfirmationOpen &&
+      !createMemoNotebookPickerOpen &&
       !mobileNotebookPickerOpen &&
       !mobileListActionsOpen &&
       !mobileMoveOpen &&
@@ -1157,8 +1277,7 @@ export const WorkspaceApp = ({
   const createMemoMutation = useMutation({
     mutationFn: api.createMemo,
     onSuccess: (data) => {
-      const targetNotebookId =
-        selectedNotebookId && selectedNotebookId !== data.memo.notebookId ? data.memo.notebookId : selectedNotebookId;
+      const targetNotebookId = data.memo.notebookId;
 
       setMemoView("notebook");
       setSearch("");
@@ -1392,8 +1511,21 @@ export const WorkspaceApp = ({
 
     setTemplatesOpen(false);
     setMobileBottomNavActive("home");
+    setPendingCreateMemoTemplate(template);
+    setCreateMemoNotebookPickerOpen(true);
+  };
+
+  const handleCreateMemoInNotebook = (notebookId: string) => {
+    if (!notebookId || memoView === "trash") {
+      return;
+    }
+
+    const template = pendingCreateMemoTemplate;
+    setCreateMemoNotebookPickerOpen(false);
+    setPendingCreateMemoTemplate(undefined);
+    setMobileBottomNavActive("home");
     createMemoMutation.mutate({
-      notebookId: defaultMemoNotebookId,
+      notebookId,
       title: template?.title ?? DEFAULT_MEMO_TITLE,
       contentMarkdown: template?.contentMarkdown ?? "",
       tags: template?.tags ?? [],
@@ -1778,6 +1910,12 @@ export const WorkspaceApp = ({
       return true;
     }
 
+    if (createMemoNotebookPickerOpen) {
+      setCreateMemoNotebookPickerOpen(false);
+      setPendingCreateMemoTemplate(undefined);
+      return true;
+    }
+
 	    if (mobileNotebookPickerOpen) {
 	      setMobileNotebookPickerOpen(false);
 	      return true;
@@ -1841,6 +1979,7 @@ export const WorkspaceApp = ({
     rightView,
     clearMemoSelection,
     createNotebookMutation.isPending,
+    createMemoNotebookPickerOpen,
     deleteMemoMutation.isPending,
     deleteMemosMutation.isPending,
     deleteNotebookMutation.isPending,
@@ -1912,6 +2051,7 @@ export const WorkspaceApp = ({
           rightView !== "editor" ||
           memoDeleteConfirmation ||
           emptyTrashConfirmationOpen ||
+          createMemoNotebookPickerOpen ||
           mobileNotebookPickerOpen ||
           notebookDeleteConfirmation ||
           notebookNameDialog ||
@@ -1970,6 +2110,7 @@ export const WorkspaceApp = ({
     canCreateMemo,
     clearMemoSelection,
     createNotebookMutation.isPending,
+    createMemoNotebookPickerOpen,
     createMemoMutation.isPending,
     handleCreateNotebook,
     handleCreateMemo,
@@ -2440,6 +2581,18 @@ export const WorkspaceApp = ({
           onCreateMemo={handleCreateMemo}
           onHome={handleMobileHome}
           onOpenSettings={handleOpenSettings}
+        />
+      )}
+      {createMemoNotebookPickerOpen && (
+        <CreateMemoNotebookPicker
+          notebooks={notebooks}
+          defaultNotebookId={defaultMemoNotebookId}
+          isCreating={createMemoMutation.isPending}
+          onClose={() => {
+            setCreateMemoNotebookPickerOpen(false);
+            setPendingCreateMemoTemplate(undefined);
+          }}
+          onCreate={handleCreateMemoInNotebook}
         />
       )}
       {mobileNotebookPickerOpen && (

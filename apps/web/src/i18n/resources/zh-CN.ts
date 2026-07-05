@@ -51,6 +51,15 @@ export const zhCN = {
     createDisabled: "当前视图不可新建笔记",
     creating: "正在创建",
   },
+  createMemoNotebookPicker: {
+    title: "选择笔记本",
+    defaultNotebook: "默认：{{name}}",
+    defaultFallback: "等待分类",
+    defaultBadge: "默认",
+    searchPlaceholder: "搜索笔记本",
+    noSearchResult: "没有找到「{{query}}」",
+    noNotebook: "暂无可用笔记本",
+  },
   workspace: {
     inboxDeleteTitle: "等待分类不能删除",
     inboxDeleteDescription: "等待分类是默认笔记本，用来保证新笔记始终有归属。",

@@ -51,6 +51,15 @@ export const enUS = {
     createDisabled: "You cannot create a note in this view",
     creating: "Creating",
   },
+  createMemoNotebookPicker: {
+    title: "Choose notebook",
+    defaultNotebook: "Default: {{name}}",
+    defaultFallback: "Inbox",
+    defaultBadge: "Default",
+    searchPlaceholder: "Search notebooks",
+    noSearchResult: "No notebook found for “{{query}}”",
+    noNotebook: "No notebook available",
+  },
   workspace: {
     inboxDeleteTitle: "Inbox cannot be deleted",
     inboxDeleteDescription: "Inbox is the default notebook, so new notes always have a home.",
