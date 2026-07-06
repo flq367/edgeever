@@ -4,7 +4,15 @@ import Container from "@/components/container.astro";
 import Layout from "@/layouts/Layout.astro";
 import { getFormattedDate } from "@/utils/all";
 
-const entries = (await getCollection("blog", ({ data }) => !data.draft)).sort(
+const selectedTag = Astro.url.searchParams.get("tag");
+
+const entries = (await getCollection("blog", ({ data }) => {
+  const isNotDraft = !data.draft;
+  if (selectedTag) {
+    return isNotDraft && data.tags && data.tags.includes(selectedTag);
+  }
+  return isNotDraft;
+})).sort(
   (a, b) => b.data.publishDate.getTime() - a.data.publishDate.getTime(),
 );
 
