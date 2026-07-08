@@ -4,7 +4,6 @@ import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { docToMarkdown, emptyDoc, type MemoDetail, type Notebook, type TiptapDoc } from "@edgeever/shared";
-import "@/styles/mobile-markdown-editor.css";
 import {
   MobileEditorFallback,
   MobileEditorHeader,
@@ -41,14 +40,12 @@ type MobileStandaloneTiptapEditorProps = {
   memoId?: string | null;
   returnTo?: string;
   onLeave?: () => void;
-  onSaved?: (memo: MemoDetail) => void | Promise<void>;
 };
 
 export const MobileStandaloneTiptapEditor = ({
   memoId: memoIdProp,
   returnTo: returnToProp,
   onLeave,
-  onSaved,
 }: MobileStandaloneTiptapEditorProps = {}) => {
   const params = useMemo(() => getMobileEditorParams(), []);
   const memoId = memoIdProp ?? params.get("memoId");
@@ -239,7 +236,6 @@ export const MobileStandaloneTiptapEditor = ({
 
         memoRef.current = data.memo;
         setMemo(data.memo);
-        await onSaved?.(data.memo);
         lastSavedSnapshotRef.current = currentSnapshot();
         dirtyRef.current = false;
         if (draftKey) {
@@ -266,7 +262,7 @@ export const MobileStandaloneTiptapEditor = ({
         currentSavePromiseRef.current = null;
       }
     },
-    [currentSnapshot, draftKey, onSaved, persistLocalDraft, setSaveStateStable]
+    [currentSnapshot, draftKey, persistLocalDraft, setSaveStateStable]
   );
 
   useEffect(() => {
@@ -361,7 +357,6 @@ export const MobileStandaloneTiptapEditor = ({
 
       memoRef.current = data.memo;
       setMemo(data.memo);
-      await onSaved?.(data.memo);
       setSaveStateStable("saved");
       window.setTimeout(() => {
         if (!dirtyRef.current && !savingRef.current && !leavingRef.current) {

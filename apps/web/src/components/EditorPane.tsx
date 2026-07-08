@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState, useEffect, useCallback, useMemo, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { NodeViewWrapper, ReactNodeViewRenderer, useEditor, EditorContent, type Editor, type NodeViewProps } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -50,6 +50,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { EditorToolbar } from "./EditorToolbar";
 import { RevisionHistoryDialog } from "./dialogs/RevisionHistoryDialog";
 import { api } from "@/lib/api";
+import { openStandaloneMobileEditor } from "@/lib/mobile-editor";
 import { cn, formatDateTime, parseTagsText } from "@/lib/utils";
 import { docToMarkdown, markdownToDoc, type Notebook, type MemoDetail, type TiptapDoc } from "@edgeever/shared";
 import { compressImageForUpload } from "@/lib/image-compression";
@@ -68,10 +69,6 @@ const DEFAULT_IMAGE_WIDTH_PERCENT = 72;
 const MIN_IMAGE_WIDTH_PERCENT = 25;
 const MAX_IMAGE_WIDTH_PERCENT = 100;
 const IMAGE_WIDTH_PRESETS = [35, 50, 72, 100];
-
-const MobileStandaloneTiptapEditor = lazy(() =>
-  import("./MobileStandaloneTiptapEditor").then((module) => ({ default: module.MobileStandaloneTiptapEditor }))
-);
 
 type NoteSearchMatch = {
   from: number;
@@ -950,6 +947,12 @@ export const EditorPane = (props: EditorPaneProps) => {
   );
 
   useEffect(() => {
+    if (isMobileViewport && mobileDefaultEditRequested && props.memo?.id) {
+      openStandaloneMobileEditor(props.memo.id);
+    }
+  }, [isMobileViewport, mobileDefaultEditRequested, props.memo?.id]);
+
+  useEffect(() => {
     const mediaQuery = window.matchMedia(MOBILE_EDITOR_QUERY);
     const updateMobileViewport = () => setIsMobileViewport(mediaQuery.matches);
 
@@ -963,21 +966,11 @@ export const EditorPane = (props: EditorPaneProps) => {
     setMobileNativeEditMemoId(null);
   }, [props.memo?.id]);
 
-  if (mobileNativeEditingActive && props.memo) {
-    const activeMemoId = props.memo.id;
-
+  if (mobileNativeEditingActive) {
     return (
-      <Suspense fallback={<div className="flex h-full min-h-0 items-center justify-center bg-white text-sm font-medium text-slate-400">加载编辑器</div>}>
-        <MobileStandaloneTiptapEditor
-          memoId={activeMemoId}
-          onSaved={props.onSaved}
-          onLeave={() => {
-            props.onMobileDefaultEditConsumed();
-            setMobileNativeEditMemoId(null);
-            props.onBackToList();
-          }}
-        />
-      </Suspense>
+      <div className="flex h-full min-h-0 items-center justify-center bg-white text-sm font-medium text-slate-400">
+        打开编辑器
+      </div>
     );
   }
 
@@ -988,6 +981,7 @@ export const EditorPane = (props: EditorPaneProps) => {
       onRequestMobileNativeEdit={() => {
         if (props.memo?.id && !readOnly) {
           setMobileNativeEditMemoId(props.memo.id);
+          openStandaloneMobileEditor(props.memo.id);
         }
       }}
     />
