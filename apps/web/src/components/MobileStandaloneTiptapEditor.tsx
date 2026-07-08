@@ -517,12 +517,6 @@ export const MobileStandaloneTiptapEditor = ({
   }, [editor, focusEditorAfterLoad, memoId, readLocalDraft, scheduleMetadataSave, setSaveStateStable]);
 
   useEffect(() => {
-    window.history.replaceState({ edgeeverMobileEditor: true }, "");
-    window.history.pushState({ edgeeverMobileEditorBackGuard: true }, "");
-
-    const handlePopState = () => {
-      void leavePage();
-    };
     const handlePageHide = () => {
       if (dirtyRef.current) {
         persistLocalDraft();
@@ -536,12 +530,10 @@ export const MobileStandaloneTiptapEditor = ({
       }
     };
 
-    window.addEventListener("popstate", handlePopState);
     window.addEventListener("pagehide", handlePageHide);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("pagehide", handlePageHide);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (saveTimerRef.current !== null) {
@@ -551,7 +543,7 @@ export const MobileStandaloneTiptapEditor = ({
         window.clearTimeout(initialFocusTimerRef.current);
       }
     };
-  }, [leavePage, persistLocalDraft, saveNow]);
+  }, [persistLocalDraft, saveNow]);
 
   const saveLabel = getMobileEditorSaveLabel(saveState);
   const statusClassName = getMobileEditorStatusClassName(saveState);
