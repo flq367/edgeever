@@ -85,7 +85,7 @@ export const PreferenceCard = ({
           </div>
         </div>
 
-        <div className="flex min-h-14 flex-col items-start gap-3 rounded-lg border border-slate-100 bg-slate-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="hidden min-h-14 flex-col items-start gap-3 rounded-lg border border-slate-100 bg-slate-50/70 px-4 py-3 lg:flex lg:flex-row lg:items-center lg:justify-between lg:gap-4">
           <div className="min-w-0">
             <div className="text-sm font-semibold text-slate-900">{t("settings.themeTitle")}</div>
             <div className="mt-0.5 text-xs leading-4 text-slate-500">{t("settings.themeDescription")}</div>
@@ -106,10 +106,12 @@ export const PreferenceCard = ({
             </Select>
           </div>
         </div>
-        <ShortcutSettingsItem
-          shortcutSettings={shortcutSettings}
-          onShortcutSettingsChange={onShortcutSettingsChange}
-        />
+        <div className="hidden lg:block">
+          <ShortcutSettingsItem
+            shortcutSettings={shortcutSettings}
+            onShortcutSettingsChange={onShortcutSettingsChange}
+          />
+        </div>
       </CardContent>
     </Card>
   );

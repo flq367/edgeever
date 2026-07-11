@@ -56,10 +56,9 @@ export const SettingsPane = ({
               <User className="h-4 w-4 text-emerald-700" />
               {t("settings.title")}
             </h1>
-            <p className="mt-0.5 truncate text-xs font-medium text-slate-400">{t("settings.subtitle")}</p>
           </div>
         </div>
-        <ThemeToggle className="inline-flex" />
+        <ThemeToggle className="inline-flex" showLabel />
       </header>
 
       <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 lg:px-6 lg:py-6">
