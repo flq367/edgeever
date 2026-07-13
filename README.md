@@ -168,3 +168,7 @@ If you want to migrate notes from other platforms to EdgeEver, please refer to t
 ## Community and Feedback
 
 - Bugs, feature requests, and deployment issues: [GitHub Issues](https://github.com/tianma-if/edgeever/issues)
+
+## Disclaimer
+
+EdgeEver is an independent open-source note-taking application developed and maintained by individuals and the community. It is not affiliated with, authorized, sponsored, or endorsed by Evernote Corporation or its affiliates.
