@@ -55,7 +55,8 @@ Agent 应优先按 [AI Agent Cloudflare Deployment](docs/agent-deploy-cloudflare
 ## 功能
 
 - 零服务器，零运维，终身完全免费：基于 Cloudflare 无服务器架构与免费级配额，短笔记可达 15 万条，200KB 图片约可存放 5 万张，彻底免去云服务器租用和维护成本。
-- 数据完全开放：笔记内容存放在基于标准 SQLite 的 Cloudflare D1 中，可通过 REST API、MCP 和 CLI 按需读取、迁移或导出，不用担心被单一笔记产品绑定。
+- 数据完全开放：笔记内容存放在基于标准 SQLite 的 Cloudflare D1 中，可通过 REST API、MCP 和 CLI 按需读取与管理，不用担心被单一笔记产品绑定。
+- Markdown ZIP 导出：可将有效笔记、Front Matter 元数据、嵌套笔记本结构、图片和附件完整导出，并使用便于迁移的相对路径。
 - AI Agent 友好：原生支持 MCP，可让 Codex、Claude Code、Antigravity 等工具读取、整理和维护笔记，并可借助 MCP 与 Notion Database、飞书多维表格进行联动。
 - 多端无缝同步且不限设备数：基于自建的 API 个人独享数据，摆脱商业笔记平台对登录设备数量的强制限制（如免费版只允许登录 2 台设备等），支持 PC、平板与手机无缝多端同步。
 - 三栏布局：笔记本树、笔记列表、主编辑区。
@@ -155,6 +156,8 @@ content_json      TipTap/ProseMirror 文档，编辑器权威格式
 content_markdown  API、Agent、导入导出使用
 content_text      搜索、摘要和索引使用
 ```
+
+如需生成便于迁移的 Markdown ZIP 压缩包，请打开 **我的** -> **导出笔记**。导出内容会保留笔记本层级，并使用相对路径保存每篇笔记对应的图片和附件。
 
 ## API 文档
 

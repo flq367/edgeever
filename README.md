@@ -55,7 +55,8 @@ The automated helper commands are recommended. If you create the Cloudflare reso
 ## Features
 
 - Serverless, 100% free, and zero maintenance: Built on Cloudflare's Serverless architecture, running entirely within free tiers. Store up to 150k notes and 50k images without any hosting fees.
-- Open data: notes are stored in Cloudflare D1, based on standard SQLite, and can be read through REST API, MCP, and CLI.
+- Open data: notes are stored in Cloudflare D1, based on standard SQLite, and can be read and managed through REST API, MCP, and CLI without locking your data to a single notes product.
+- Markdown ZIP export: export active notes with Front Matter metadata, nested notebook structure, images, and attachments using portable relative paths.
 - AI Agent friendly: built-in MCP support lets tools such as Codex, Claude Code, and Antigravity read, organize, and maintain notes, while enabling integrations with Notion databases and Feishu Bitable.
 - Uncapped multi-device sync: self-hosted API means no restrictive commercial limits on the number of active login devices, supporting seamless synchronization across PC, tablet, and mobile (via PWA or browser).
 - Three-pane layout: notebook tree, note list, and main editor.
@@ -153,6 +154,8 @@ content_json      TipTap/ProseMirror document, the editor source of truth
 content_markdown  API, Agent, import, and export format
 content_text      Search, summary, and indexing text
 ```
+
+To create a portable Markdown ZIP archive, open **Profile** -> **Export notes**. The export preserves notebook hierarchy and stores images and attachments alongside each note using relative paths.
 
 ## API
 
