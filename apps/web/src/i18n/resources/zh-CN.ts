@@ -96,7 +96,7 @@ export const zhCN = {
     newNotebook: "新建笔记本",
     newMemo: "新建笔记",
     entries: "笔记入口",
-    allMemos: "所有笔记",
+    allMemos: "笔记总览",
     sortTitle: "笔记本排序：{{label}}",
     loading: "加载中",
     secondaryEntries: "辅助入口",
