@@ -486,6 +486,8 @@ export const enUS = {
     emptyTrashTitle: "Empty trash",
     emptyTrashDescription: "All notes in Trash and still-linked attachments will be deleted. This action cannot be undone.",
     emptyTrashConfirm: "Empty trash",
+    emptyTrashFailedTitle: "Couldn't empty trash",
+    emptyTrashFailedDescription: "Your notes have been restored to Trash. Please try again.",
     deleteNotebookTitle: "Delete notebook “{{name}}”",
     deleteNotebookDescription: "Clear its notes and child notebooks first. It cannot be restored from here after deletion.",
     ok: "OK",

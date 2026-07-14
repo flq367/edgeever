@@ -486,6 +486,8 @@ export const zhCN = {
     emptyTrashTitle: "清空回收站",
     emptyTrashDescription: "回收站中的全部笔记和仍关联的附件都会删除，这个操作不可恢复。",
     emptyTrashConfirm: "清空回收站",
+    emptyTrashFailedTitle: "清空回收站失败",
+    emptyTrashFailedDescription: "笔记已恢复到回收站，请稍后重试。",
     deleteNotebookTitle: "删除笔记本「{{name}}」",
     deleteNotebookDescription: "请先清空其中的笔记和子笔记本。删除后无法从这里恢复。",
     ok: "知道了",

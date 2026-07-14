@@ -147,6 +147,13 @@ type MemoDeleteOptimisticContext = {
   previousSelectedMemoId: string | null;
 };
 
+type EmptyTrashOptimisticContext = {
+  previousMemoLists: Array<[readonly unknown[], MemoListQueryData | undefined]>;
+  previousMemoDetails: Array<[readonly unknown[], { memo: MemoDetail } | undefined]>;
+  previousActivePane: Pane;
+  previousSelectedMemoId: string | null;
+};
+
 const memoToSummary = (memo: MemoDetail): MemoSummary => ({
   id: memo.id,
   notebookId: memo.notebookId,
@@ -329,6 +336,19 @@ const removeMemoSummariesFromLists = (queryClient: QueryClient, memoIds: Set<str
 
     return changed ? { ...current, pages } : current;
   });
+};
+
+const clearTrashMemoLists = (queryClient: QueryClient) => {
+  for (const [queryKey, current] of queryClient.getQueriesData<MemoListQueryData>({ queryKey: ["memos", "trash"] })) {
+    if (!current) {
+      continue;
+    }
+
+    queryClient.setQueryData(queryKey, {
+      ...current,
+      pages: current.pages.map((page) => ({ ...page, memos: [], totalCount: 0, nextCursor: null })),
+    });
+  }
 };
 
 const decrementNotebookMemoCounts = (queryClient: QueryClient, removedMemos: MemoSummary[]) => {
@@ -1504,16 +1524,51 @@ export const WorkspaceApp = ({
 
   const emptyTrashMutation = useMutation({
     mutationFn: api.emptyTrash,
-    onSuccess: async () => {
+    onMutate: async (): Promise<EmptyTrashOptimisticContext> => {
       setEmptyTrashConfirmationOpen(false);
       clearMemoSelection();
       setSelectedMemoId(null);
       setActivePane("memos");
 
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["memos"] }),
-        queryClient.invalidateQueries({ queryKey: ["memo"] }),
-        queryClient.invalidateQueries({ queryKey: ["resources"] }),
+        queryClient.cancelQueries({ queryKey: ["memos"] }),
+        queryClient.cancelQueries({ queryKey: ["memo"] }),
+        queryClient.cancelQueries({ queryKey: ["resources"] }),
+      ]);
+
+      const previousMemoLists = queryClient.getQueriesData<MemoListQueryData>({ queryKey: ["memos"] });
+      const previousMemoDetails = queryClient.getQueriesData<{ memo: MemoDetail }>({ queryKey: ["memo"] });
+
+      clearTrashMemoLists(queryClient);
+      for (const [queryKey] of previousMemoDetails) {
+        if (queryKey[2] === "trash") {
+          queryClient.removeQueries({ queryKey });
+        }
+      }
+
+      return { previousMemoLists, previousMemoDetails, previousActivePane: activePane, previousSelectedMemoId: selectedMemoId };
+    },
+    onError: (_error, _variables, context) => {
+      context?.previousMemoLists.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+      context?.previousMemoDetails.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+      setSelectedMemoId(context?.previousSelectedMemoId ?? null);
+      setActivePane(context?.previousActivePane ?? "memos");
+      setAppNoticeDialog({
+        title: t("workspaceDialogs.emptyTrashFailedTitle"),
+        description: t("workspaceDialogs.emptyTrashFailedDescription"),
+      });
+    },
+    onSettled: (_data, error) => {
+      const refetchType = error ? "active" : "inactive";
+
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["memos"], refetchType }),
+        queryClient.invalidateQueries({ queryKey: ["memo"], refetchType }),
+        queryClient.invalidateQueries({ queryKey: ["resources"], refetchType }),
       ]);
     },
   });
