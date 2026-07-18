@@ -22,6 +22,7 @@ export type LocalMemoListParams = {
   sort?: MemoSortMode;
   filter?: MemoFilterMode;
   limit?: number;
+  offset?: number;
 };
 
 export const createMobileDataScope = (baseUrl: string, userId?: string | null) =>
@@ -86,16 +87,21 @@ export const listLocalMemos = async (scope: string, params: LocalMemoListParams)
     `SELECT COUNT(*) AS count FROM mobile_memos WHERE ${conditions.join(" AND ")}`,
     ...binds
   );
+  const limit = params.limit ?? 50;
+  const offset = Math.max(0, params.offset ?? 0);
   const rows = await db.getAllAsync<StoredMemoRow>(
-    `SELECT data_json FROM mobile_memos WHERE ${conditions.join(" AND ")} ORDER BY ${orderBy} LIMIT ?`,
+    `SELECT data_json FROM mobile_memos WHERE ${conditions.join(" AND ")} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
     ...binds,
-    params.limit ?? 50
+    limit,
+    offset
   );
+  const totalCount = countRow?.count ?? rows.length;
+  const nextOffset = offset + rows.length;
 
   return {
     memos: rows.map((row) => toMemoSummary(JSON.parse(row.data_json) as MemoDetail)),
-    totalCount: countRow?.count ?? rows.length,
-    nextCursor: null,
+    totalCount,
+    nextCursor: nextOffset < totalCount ? String(nextOffset) : null,
   };
 };
 

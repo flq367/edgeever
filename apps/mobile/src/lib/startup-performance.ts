@@ -8,10 +8,17 @@ type NativeStartupTiming = {
 };
 
 const marks = new Map<StartupMark, number>();
+let latestEditorStartupMs: number | null = null;
 
 export const markStartup = (name: StartupMark) => {
   if (!marks.has(name)) {
     marks.set(name, performance.now());
+  }
+};
+
+export const recordEditorStartup = (durationMs: number) => {
+  if (Number.isFinite(durationMs) && durationMs >= 0) {
+    latestEditorStartupMs = durationMs;
   }
 };
 
@@ -32,5 +39,6 @@ export const getStartupPerformanceItems = () => {
     { label: "启动至工作区首帧", value: sinceNativeStart("workspace-first-commit") },
     { label: "启动至列表数据就绪", value: sinceNativeStart("workspace-data-ready") },
     { label: "启动至交互空闲", value: sinceNativeStart("workspace-interactive") },
+    { label: "最近一次本地编辑器启动", value: latestEditorStartupMs === null ? "尚未记录" : `${latestEditorStartupMs.toFixed(0)} ms` },
   ];
 };

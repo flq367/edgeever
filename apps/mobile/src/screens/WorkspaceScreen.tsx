@@ -1,5 +1,5 @@
-import { createContext, lazy, memo, Suspense, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient, type UseMutationResult } from "@tanstack/react-query";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient, type UseMutationResult } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
 import type { DocumentPickerAsset } from "expo-document-picker";
@@ -58,6 +58,7 @@ import {
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   AppState,
   type AppStateStatus,
   FlatList,
@@ -77,8 +78,8 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Markdown from "react-native-markdown-display";
-import { createExcerpt, docToText, getNotebookDescendantIds, markdownToDoc, type ApiToken, type MemoDetail, type MemoRevision, type MemoSummary, type Notebook, type ResourceListItem, type TagSummary } from "@edgeever/shared";
-import { clearMobileMemoDraft, readMobileMemoDraft, writeMobileMemoDraft } from "../lib/mobile-drafts";
+import { createExcerpt, docToMarkdown, docToText, getNotebookDescendantIds, markdownToDoc, type ApiToken, type MemoDetail, type MemoRevision, type MemoSummary, type Notebook, type ResourceListItem, type TagSummary, type TiptapDoc } from "@edgeever/shared";
+import { clearMobileMemoDraft, clearMobileNewMemoDraft, readMobileMemoDraft, readMobileNewMemoDraft, writeMobileMemoDraft, writeMobileNewMemoDraft } from "../lib/mobile-drafts";
 import {
   readMobileImageCompressionEnabled,
   readMobileLocalePreference,
@@ -119,10 +120,10 @@ import {
   upsertLocalMemo,
 } from "../lib/local-mirror";
 import { AccountSecurityModal } from "./AccountSecurityModal";
-import { getStartupPerformanceItems, markStartup } from "../lib/startup-performance";
+import { getStartupPerformanceItems, markStartup, recordEditorStartup } from "../lib/startup-performance";
+import LocalTiptapEditor, { type LocalTiptapEditorRef } from "../components/LocalTiptapEditor";
 
 const ALL_NOTES_ID = "all";
-const LazyWebView = lazy(() => import("../components/LazyWebView"));
 const DEFAULT_MEMO_TITLE = "无标题笔记";
 const MOBILE_APP_VERSION = Constants.expoConfig?.version ?? "0.1.2";
 const GITHUB_REPOSITORY_URL = "https://github.com/tianma-if/edgeever";
@@ -309,6 +310,15 @@ type TextSelection = {
   end: number;
 };
 type MarkdownAction = "heading" | "bold" | "italic" | "bullet" | "checklist" | "quote" | "code" | "link" | "horizontalRule";
+type MobileMemoUpdatePayload = {
+  title?: string;
+  contentJson?: TiptapDoc;
+  contentMarkdown?: string;
+  isPinned?: boolean;
+  notebookId?: string;
+  tags?: string[];
+};
+type MobileMemoUpdateMutation = UseMutationResult<MemoDetail, Error, { memo: MemoDetail; payload: MobileMemoUpdatePayload }>;
 
 export const WorkspaceScreen = () => {
   const { client, session, signOut } = useSession();
@@ -380,9 +390,10 @@ export const WorkspaceScreen = () => {
     [activeNotebookId, notebooks]
   );
 
-  const memosQuery = useQuery({
-    queryKey: ["mobile", "memos", memoView, activeNotebookId, memoFilterMode, memoSortMode, activeNotebookDescendantIds],
-    queryFn: async () => {
+  const memosQuery = useInfiniteQuery({
+    queryKey: ["mobile", "memos", memoView, activeNotebookId, memoFilterMode, memoSortMode, activeNotebookDescendantIds, "paged-v2"],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
       if (!client) {
         throw new Error("Client is not ready");
       }
@@ -391,17 +402,20 @@ export const WorkspaceScreen = () => {
         notebookIds: activeNotebookDescendantIds,
         filter: memoFilterMode,
         limit: 50,
+        offset: pageParam,
         sort: memoSortMode,
         trash: memoView === "trash",
       });
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ? Number(lastPage.nextCursor) : undefined,
     enabled: Boolean(client),
     placeholderData: keepPreviousData,
   });
 
-  const searchQuery = useQuery({
-    queryKey: ["mobile", "search", debouncedSearchText],
-    queryFn: async () => {
+  const searchQuery = useInfiniteQuery({
+    queryKey: ["mobile", "search", debouncedSearchText, "paged-v2"],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
       if (!client) {
         throw new Error("Client is not ready");
       }
@@ -409,9 +423,11 @@ export const WorkspaceScreen = () => {
       return listLocalMemos(dataScope, {
         q: debouncedSearchText,
         limit: 50,
+        offset: pageParam,
         sort: "updated-desc",
       });
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ? Number(lastPage.nextCursor) : undefined,
     enabled: Boolean(client && debouncedSearchText.length > 0),
     placeholderData: keepPreviousData,
   });
@@ -439,6 +455,34 @@ export const WorkspaceScreen = () => {
     const task = InteractionManager.runAfterInteractions(() => markStartup("workspace-interactive"));
     return () => task.cancel();
   }, []);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (selectedMemoId) {
+        setSelectedMemoId(null);
+        return true;
+      }
+      if (selectionMode) {
+        setSelectionMode(false);
+        setSelectedMemoIds(new Set());
+        setSelectionMoveOpen(false);
+        return true;
+      }
+      if (activeView !== "notes") {
+        if (activeView === "search") {
+          setSearchText("");
+        }
+        setActiveView("notes");
+        return true;
+      }
+      if (memoView === "trash") {
+        setMemoView("notebook");
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [activeView, memoView, selectedMemoId, selectionMode]);
 
   useEffect(() => {
     if (notebooksQuery.data && memosQuery.data) {
@@ -469,11 +513,7 @@ export const WorkspaceScreen = () => {
   };
 
   const handleSearchMemoPress = (memo: MemoSummary) => {
-    setActiveView("notes");
     setMemoView(memo.isDeleted ? "trash" : "notebook");
-    if (!memo.isDeleted) {
-      setActiveNotebookId(memo.notebookId);
-    }
     setSelectedMemoId(memo.id);
   };
 
@@ -536,12 +576,11 @@ export const WorkspaceScreen = () => {
     if (memoId) {
       setSelectedMemoId(memoId);
     }
-    void invalidateWorkspace();
   };
 
   const memoCount = notebooks.reduce((total, notebook) => total + notebook.memoCount, 0);
-  const memos = memosQuery.data?.memos ?? [];
-  const searchResults = searchQuery.data?.memos ?? [];
+  const memos = useMemo(() => memosQuery.data?.pages.flatMap((page) => page.memos) ?? [], [memosQuery.data]);
+  const searchResults = useMemo(() => searchQuery.data?.pages.flatMap((page) => page.memos) ?? [], [searchQuery.data]);
   const selectedMemo = memoDetailQuery.data?.memo ?? null;
   const isRefreshing = notebooksQuery.isFetching || memosQuery.isFetching || searchQuery.isFetching || memoDetailQuery.isFetching;
   const selectedMemoIdList = Array.from(selectedMemoIds);
@@ -667,7 +706,7 @@ export const WorkspaceScreen = () => {
   };
 
   const updateMemoMutation = useMutation({
-    mutationFn: async ({ memo, payload }: { memo: MemoDetail; payload: { title?: string; contentMarkdown?: string; isPinned?: boolean; notebookId?: string; tags?: string[] } }) => {
+    mutationFn: async ({ memo, payload }: { memo: MemoDetail; payload: MobileMemoUpdatePayload }) => {
       if (!client) {
         throw new Error("Client is not ready");
       }
@@ -695,7 +734,7 @@ export const WorkspaceScreen = () => {
   });
 
   const localUpdateMemoMutation = useMutation({
-    mutationFn: async ({ memo, payload }: { memo: MemoDetail; payload: { title?: string; contentMarkdown?: string; isPinned?: boolean; notebookId?: string; tags?: string[] } }) => {
+    mutationFn: async ({ memo, payload }: { memo: MemoDetail; payload: MobileMemoUpdatePayload }) => {
       const syncBaseMemo = await resolveLocalMemo(dataScope, memo.id) ?? memo;
       const optimisticMemo = createOptimisticMemo(syncBaseMemo, payload);
 
@@ -1083,6 +1122,7 @@ export const WorkspaceScreen = () => {
         <NotesView
           activeNotebook={activeNotebook}
           isLoading={memosQuery.isLoading}
+          isLoadingMore={memosQuery.isFetchingNextPage}
           isRefreshing={isRefreshing}
           memoFilterMode={memoFilterMode}
           memoListDensity={memoListDensity}
@@ -1095,7 +1135,12 @@ export const WorkspaceScreen = () => {
           onOpenNotebookPicker={() => setNotebookPickerOpen(true)}
           onOpenSearch={() => setActiveView("search")}
           onMemoPress={handleMemoPress}
-          onMemoLongPress={(memo) => setMemoActionsMemo(memo)}
+          onMemoLongPress={(memo) => selectSingleMemo(memo.id)}
+          onLoadMore={() => {
+            if (memosQuery.hasNextPage && !memosQuery.isFetchingNextPage) {
+              void memosQuery.fetchNextPage();
+            }
+          }}
           onRefresh={refresh}
           onSetMemoView={setMemoView}
           selectionMode={selectionMode}
@@ -1107,7 +1152,10 @@ export const WorkspaceScreen = () => {
 
       {activeView === "search" ? (
         <SearchView
-          isLoading={searchQuery.isFetching}
+          error={searchQuery.error}
+          isError={searchQuery.isError}
+          isLoading={searchQuery.isLoading}
+          isLoadingMore={searchQuery.isFetchingNextPage}
           isRefreshing={isRefreshing}
           onClose={() => {
             setSearchText("");
@@ -1115,10 +1163,15 @@ export const WorkspaceScreen = () => {
           }}
           onMemoPress={handleSearchMemoPress}
           onRefresh={refresh}
+          onLoadMore={() => {
+            if (searchQuery.hasNextPage && !searchQuery.isFetchingNextPage) {
+              void searchQuery.fetchNextPage();
+            }
+          }}
           results={searchResults}
           searchText={searchText}
           setSearchText={setSearchText}
-          totalCount={searchQuery.data?.totalCount ?? searchResults.length}
+          totalCount={searchQuery.data?.pages[0]?.totalCount ?? searchResults.length}
         />
       ) : null}
 
@@ -1176,7 +1229,14 @@ export const WorkspaceScreen = () => {
         }}
         updateMutation={localUpdateMemoMutation}
       /> : null}
-      {richEditingMemo ? <RichEditorModal baseUrl={session?.baseUrl ?? ""} memo={richEditingMemo} notebooks={notebooks} onClose={closeRichEditor} token={session?.token ?? ""} /> : null}
+      {richEditingMemo ? <RichEditorModal
+        baseUrl={session?.baseUrl ?? ""}
+        imageCompressionEnabled={imageCompressionEnabled}
+        memo={richEditingMemo}
+        notebooks={notebooks}
+        onClose={closeRichEditor}
+        updateMutation={localUpdateMemoMutation}
+      /> : null}
       {notebookPickerOpen ? <NotebookPickerModal
         activeNotebookId={activeNotebookId}
         notebookSortMode={notebookSortMode}
@@ -1222,6 +1282,7 @@ export const WorkspaceScreen = () => {
 
       {createOpen ? <CreateMemoModal
         activeNotebookId={activeNotebookId}
+        baseUrl={session?.baseUrl ?? ""}
         dataScope={dataScope}
         notebooks={notebooks}
         onClose={() => setCreateOpen(false)}
@@ -1359,6 +1420,7 @@ export const WorkspaceScreen = () => {
           onPress={() => setActiveView("notes")}
         />
         <Pressable
+          accessibilityLabel="新建笔记"
           accessibilityRole="button"
           disabled={!canCreateMemo}
           onPress={() => setCreateOpen(true)}
@@ -1383,6 +1445,7 @@ const NotesView = ({
   error,
   isError,
   isLoading,
+  isLoadingMore,
   isRefreshing,
   memoFilterMode,
   memoListDensity,
@@ -1396,6 +1459,7 @@ const NotesView = ({
   onOpenSearch,
   onMemoLongPress,
   onMemoPress,
+  onLoadMore,
   onRefresh,
   onSetMemoView,
   selectedMemoIds,
@@ -1405,6 +1469,7 @@ const NotesView = ({
   error: unknown;
   isError: boolean;
   isLoading: boolean;
+  isLoadingMore: boolean;
   isRefreshing: boolean;
   memoFilterMode: MemoFilterMode;
   memoListDensity: MobileMemoListDensity;
@@ -1418,6 +1483,7 @@ const NotesView = ({
   onOpenSearch: () => void;
   onMemoLongPress: (memo: MemoSummary) => void;
   onMemoPress: (memoId: string) => void;
+  onLoadMore: () => void;
   onRefresh: () => void;
   onSetMemoView: (memoView: MemoView) => void;
   selectionMode: boolean;
@@ -1428,6 +1494,7 @@ const NotesView = ({
       <View style={styles.mobileListHeader}>
         <View style={styles.mobileListTitleRow}>
           <Pressable
+            accessibilityLabel={memoView === "trash" ? "返回笔记列表" : "选择笔记本"}
             accessibilityRole="button"
             onPress={memoView === "trash" ? () => onSetMemoView("notebook") : onOpenNotebookPicker}
             style={styles.mobileNotebookTitleButton}
@@ -1438,14 +1505,14 @@ const NotesView = ({
             </Text>
             {memoView === "notebook" ? <ChevronDown color="#64748b" size={16} /> : null}
           </Pressable>
-          <Pressable accessibilityRole="button" onPress={onOpenActions} style={styles.mobileMoreButton}>
+          <Pressable accessibilityLabel="笔记列表操作" accessibilityRole="button" onPress={onOpenActions} style={styles.mobileMoreButton}>
             <MoreHorizontal color="#475569" size={20} />
           </Pressable>
         </View>
 
         {memoView === "notebook" ? (
           <View style={styles.mobileSearchRow}>
-            <Pressable accessibilityRole="button" onPress={onOpenSearch} style={styles.mobileSearchButton}>
+            <Pressable accessibilityLabel="搜索笔记" accessibilityRole="button" onPress={onOpenSearch} style={styles.mobileSearchButton}>
               <Search color="#64748b" size={17} />
               <Text style={styles.mobileSearchPlaceholder}>搜索笔记</Text>
             </Pressable>
@@ -1478,12 +1545,15 @@ const NotesView = ({
       error={error}
       isError={isError}
       isLoading={isLoading}
+      isLoadingMore={isLoadingMore}
       isRefreshing={isRefreshing}
       listDensity={memoListDensity}
       memos={memos}
       onMemoLongPress={onMemoLongPress}
       onMemoPress={onMemoPress}
+      onLoadMore={onLoadMore}
       onRefresh={onRefresh}
+      onRetry={onRefresh}
       selectionMode={selectionMode}
       selectedMemoIds={selectedMemoIds}
     />
@@ -1736,20 +1806,28 @@ const ActionSheetItem = ({ danger = false, disabled = false, icon, label, onPres
 );
 
 const SearchView = ({
+  error,
+  isError,
   isLoading,
+  isLoadingMore,
   isRefreshing,
   onClose,
   onMemoPress,
+  onLoadMore,
   onRefresh,
   results,
   searchText,
   setSearchText,
   totalCount,
 }: {
+  error?: unknown;
+  isError: boolean;
   isLoading: boolean;
+  isLoadingMore: boolean;
   isRefreshing: boolean;
   onClose: () => void;
   onMemoPress: (memo: MemoSummary) => void;
+  onLoadMore: () => void;
   onRefresh: () => void;
   results: MemoSummary[];
   searchText: string;
@@ -1760,7 +1838,7 @@ const SearchView = ({
     <View style={styles.searchHeader}>
       <View style={styles.searchTitleRow}>
         <Text style={styles.sectionTitle}>搜索</Text>
-        <IconButton onPress={onClose}>
+        <IconButton accessibilityLabel="关闭搜索" onPress={onClose}>
           <X color="#0f172a" size={20} />
         </IconButton>
       </View>
@@ -1776,7 +1854,7 @@ const SearchView = ({
           value={searchText}
         />
         {searchText ? (
-          <Pressable onPress={() => setSearchText("")}>
+          <Pressable accessibilityLabel="清空搜索" accessibilityRole="button" onPress={() => setSearchText("")}>
             <X color="#64748b" size={18} />
           </Pressable>
         ) : null}
@@ -1788,8 +1866,10 @@ const SearchView = ({
       <MemoList
         emptyDescription="换个关键词再试"
         emptyTitle="没有找到匹配笔记"
-        isError={false}
+        error={error}
+        isError={isError}
         isLoading={isLoading}
+        isLoadingMore={isLoadingMore}
         isRefreshing={isRefreshing}
         listDensity="preview"
         memos={results}
@@ -1799,13 +1879,15 @@ const SearchView = ({
             onMemoPress(memo);
           }
         }}
+        onLoadMore={onLoadMore}
         onRefresh={onRefresh}
+        onRetry={onRefresh}
       />
     ) : (
       <View style={styles.centerState}>
         <Search color="#94a3b8" size={32} />
         <Text style={styles.emptyTitle}>输入关键词开始搜索</Text>
-        <Text style={styles.mutedText}>搜索会请求你的 EdgeEver 实例</Text>
+        <Text style={styles.mutedText}>搜索本机同步缓存，结果会即时显示</Text>
       </View>
     )}
   </View>
@@ -2039,6 +2121,7 @@ const SettingsLinkGroup = ({ description, icon, onPress, title }: { description:
 
 const CreateMemoModal = ({
   activeNotebookId,
+  baseUrl,
   dataScope,
   notebooks,
   onClose,
@@ -2048,6 +2131,7 @@ const CreateMemoModal = ({
   visible,
 }: {
   activeNotebookId: string;
+  baseUrl: string;
   dataScope: string;
   notebooks: Notebook[];
   onClose: () => void;
@@ -2058,20 +2142,69 @@ const CreateMemoModal = ({
 }) => {
   const queryClient = useQueryClient();
   const fallbackNotebookId = activeNotebookId !== ALL_NOTES_ID ? activeNotebookId : notebooks[0]?.id ?? "";
+  const editorRef = useRef<LocalTiptapEditorRef>(null);
+  const contentJsonRef = useRef<TiptapDoc>(markdownToDoc(""));
+  const contentMarkdownRef = useRef("");
+  const dirtyRef = useRef(false);
   const [notebookId, setNotebookId] = useState(fallbackNotebookId);
   const [title, setTitle] = useState("");
   const [tagsText, setTagsText] = useState("");
   const [contentMarkdown, setContentMarkdown] = useState("");
-  const [contentSelection, setContentSelection] = useState<TextSelection>({ start: 0, end: 0 });
   const [notebookPickerOpen, setNotebookPickerOpen] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [editorReady, setEditorReady] = useState(false);
   const targetNotebookId = notebookId || fallbackNotebookId;
   const selectedNotebookName = notebooks.find((notebook) => notebook.id === targetNotebookId)?.name ?? "选择笔记本";
 
   useEffect(() => {
-    if (visible) {
-      setNotebookId(fallbackNotebookId);
+    if (!visible) {
+      return;
     }
+    let active = true;
+    setDraftLoaded(false);
+    setDraftRestored(false);
+    setEditorReady(false);
+    void readMobileNewMemoDraft(dataScope).then((draft) => {
+      if (!active) {
+        return;
+      }
+      const restoredNotebookId = draft && notebooks.some((notebook) => notebook.id === draft.notebookId)
+        ? draft.notebookId
+        : fallbackNotebookId;
+      const markdown = draft?.contentMarkdown ?? "";
+      contentMarkdownRef.current = markdown;
+      contentJsonRef.current = markdownToDoc(markdown);
+      dirtyRef.current = Boolean(draft);
+      setTitle(draft?.title ?? "");
+      setTagsText(draft?.tagsText ?? "");
+      setContentMarkdown(markdown);
+      setNotebookId(restoredNotebookId);
+      setDirty(Boolean(draft));
+      setDraftRestored(Boolean(draft));
+      setDraftLoaded(true);
+    });
+    return () => {
+      active = false;
+    };
   }, [fallbackNotebookId, visible]);
+
+  useEffect(() => {
+    if (!visible || !draftLoaded || !dirty) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      void writeMobileNewMemoDraft(dataScope, {
+        title,
+        contentMarkdown: contentMarkdownRef.current,
+        notebookId: targetNotebookId,
+        tagsText,
+        updatedAt: new Date().toISOString(),
+      });
+    }, 350);
+    return () => clearTimeout(timeout);
+  }, [dataScope, dirty, draftLoaded, tagsText, targetNotebookId, title, visible, contentMarkdown]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -2080,8 +2213,8 @@ const CreateMemoModal = ({
       }
       const now = new Date().toISOString();
       const temporaryId = `local:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
-      const markdown = contentMarkdown.trim();
-      const contentJson = markdownToDoc(markdown);
+      const markdown = contentMarkdownRef.current.trim();
+      const contentJson = contentJsonRef.current;
       const contentText = docToText(contentJson);
       const memo: MemoDetail = {
         id: temporaryId,
@@ -2123,47 +2256,113 @@ const CreateMemoModal = ({
       setTitle("");
       setTagsText("");
       setContentMarkdown("");
+      contentMarkdownRef.current = "";
+      contentJsonRef.current = markdownToDoc("");
+      dirtyRef.current = false;
+      setDirty(false);
+      await clearMobileNewMemoDraft(dataScope);
       await onQueued();
       onCreated(memo);
     },
   });
   const canSubmitCreateMemo = Boolean(targetNotebookId) && !createMutation.isPending;
 
-  const insertImageLinkFromClipboard = async () => {
+  const pickImageLinkFromClipboard = async () => {
     const text = await Clipboard.getStringAsync();
-
     const url = text.trim();
     if (!/^https?:\/\//i.test(url)) {
-      Alert.alert("未找到图片链接", "请先复制一个以 http:// 或 https:// 开头的图片链接。");
+      Alert.alert("新建笔记暂未上传图片", "可以先复制图片链接插入；本地图片请在完成创建后上传。");
+      return null;
+    }
+    return { alt: "图片", url };
+  };
+
+  const markDirty = () => {
+    dirtyRef.current = true;
+    setDirty(true);
+  };
+
+  const requestClose = () => {
+    if (createMutation.isPending) {
       return;
     }
-
-    const next = insertPlainText(contentMarkdown, contentSelection, `![图片](${url})`);
-    setContentMarkdown(next.value);
-    setContentSelection(next.selection);
+    editorRef.current?.flush();
+    if (!dirtyRef.current) {
+      onClose();
+      return;
+    }
+    Alert.alert("退出新建笔记？", "内容已自动保存为本地草稿，下次新建时会继续恢复。", [
+      { text: "继续编辑", style: "cancel" },
+      {
+        text: "放弃草稿",
+        style: "destructive",
+        onPress: () => {
+          void clearMobileNewMemoDraft(dataScope);
+          dirtyRef.current = false;
+          onClose();
+        },
+      },
+      {
+        text: "保留并退出",
+        onPress: () => {
+          void writeMobileNewMemoDraft(dataScope, {
+            title,
+            contentMarkdown: contentMarkdownRef.current,
+            notebookId: targetNotebookId,
+            tagsText,
+            updatedAt: new Date().toISOString(),
+          });
+          onClose();
+        },
+      },
+    ]);
   };
 
-  const applyCreateEditorAction = (action: MarkdownAction) => {
-    const next = applyMarkdownAction(contentMarkdown, contentSelection, action);
-    setContentMarkdown(next.value);
-    setContentSelection(next.selection);
-  };
+  const editorElement = useMemo(() => draftLoaded && baseUrl ? (
+    <LocalTiptapEditor
+      baseUrl={baseUrl}
+      content={contentJsonRef.current}
+      dom={{
+        bounces: false,
+        contentInsetAdjustmentBehavior: "never",
+        overScrollMode: "never",
+        scrollEnabled: false,
+        style: styles.createMemoEditor,
+      }}
+      onChange={async (contentJson) => {
+        contentJsonRef.current = contentJson;
+        const markdown = docToMarkdown(contentJson);
+        contentMarkdownRef.current = markdown;
+        setContentMarkdown(markdown);
+        markDirty();
+      }}
+      onPickImage={pickImageLinkFromClipboard}
+      onReady={async (elapsedMs) => {
+        setEditorReady(true);
+        recordEditorStartup(elapsedMs);
+      }}
+      ref={editorRef}
+    />
+  ) : null, [baseUrl, draftLoaded]);
 
   return (
-    <Modal animationType="slide" onRequestClose={() => !createMutation.isPending && onClose()} presentationStyle="fullScreen" visible={visible}>
+    <Modal animationType="slide" onRequestClose={requestClose} presentationStyle="fullScreen" visible={visible}>
       <SafeAreaView style={styles.createMemoSafeArea}>
         <View style={styles.createMemoHeader}>
-          <Pressable accessibilityLabel="返回" disabled={createMutation.isPending} onPress={onClose} style={styles.createMemoBackButton}>
+          <Pressable accessibilityLabel="返回" accessibilityRole="button" disabled={createMutation.isPending} onPress={requestClose} style={styles.createMemoBackButton}>
             <ChevronLeft color={createMutation.isPending ? "#cbd5e1" : "#0f172a"} size={30} />
           </Pressable>
           <View style={styles.createMemoHeaderActions}>
             <Text style={[styles.createMemoStatus, createMutation.isPending && styles.createMemoStatusActive]}>
-              {createMutation.isPending ? "保存中" : "未保存"}
+              {createMutation.isPending ? "保存中" : dirty ? "本地草稿" : editorReady ? "已保存" : "正在启动"}
             </Text>
             <Pressable
               accessibilityLabel="完成新建笔记"
               disabled={!canSubmitCreateMemo}
-              onPress={() => createMutation.mutate()}
+              onPress={() => {
+                editorRef.current?.flush();
+                createMutation.mutate();
+              }}
               style={[styles.createMemoDoneButton, !canSubmitCreateMemo && styles.createMemoDoneButtonDisabled]}
             >
               {createMutation.isPending ? <ActivityIndicator color="#64748b" size="small" /> : <Text style={[styles.createMemoDoneText, !canSubmitCreateMemo && styles.createMemoDoneTextDisabled]}>完成</Text>}
@@ -2171,14 +2370,15 @@ const CreateMemoModal = ({
           </View>
         </View>
 
-        <ScrollView
-          contentContainerStyle={styles.createMemoMain}
-          keyboardShouldPersistTaps="handled"
-          style={styles.createMemoScroll}
-        >
+        <View style={styles.createMemoMain}>
+          {draftRestored ? <Text style={styles.createMemoDraftNotice}>已恢复上次未完成的本地草稿</Text> : null}
           <TextInput
             autoCorrect
-            onChangeText={setTitle}
+            accessibilityLabel="笔记标题"
+            onChangeText={(value) => {
+              setTitle(value);
+              markDirty();
+            }}
             placeholder={DEFAULT_MEMO_TITLE}
             placeholderTextColor="#94a3b8"
             style={styles.createMemoTitleInput}
@@ -2191,8 +2391,12 @@ const CreateMemoModal = ({
               <ChevronDown color="#64748b" size={14} />
             </Pressable>
             <TextInput
+              accessibilityLabel="笔记标签"
               autoCorrect
-              onChangeText={setTagsText}
+              onChangeText={(value) => {
+                setTagsText(value);
+                markDirty();
+              }}
               placeholder="添加标签，用逗号分隔"
               placeholderTextColor="#94a3b8"
               style={styles.createMemoTagsInput}
@@ -2200,30 +2404,20 @@ const CreateMemoModal = ({
             />
           </View>
 
-          <View style={styles.createMemoToolbar}>
-            <CreateMemoToolbarButton accessibilityLabel="从剪贴板插入图片链接" icon={<ImagePlus color="#64748b" size={18} />} onPress={() => void insertImageLinkFromClipboard()} />
-            <CreateMemoToolbarButton accessibilityLabel="加粗" icon={<Bold color="#64748b" size={17} />} onPress={() => applyCreateEditorAction("bold")} />
-            <CreateMemoToolbarButton accessibilityLabel="无序列表" icon={<List color="#64748b" size={18} />} onPress={() => applyCreateEditorAction("bullet")} />
-            <CreateMemoToolbarButton accessibilityLabel="引用" icon={<Quote color="#64748b" size={17} />} onPress={() => applyCreateEditorAction("quote")} />
-            <CreateMemoToolbarButton accessibilityLabel="分割线" icon={<Minus color="#64748b" size={18} />} onPress={() => applyCreateEditorAction("horizontalRule")} />
+          <View style={styles.createMemoEditorFrame}>
+            {!editorReady ? (
+              <View style={styles.richEditorLoading}>
+                <ActivityIndicator color="#0f172a" />
+                <Text style={styles.mutedText}>正在启动本地编辑器</Text>
+              </View>
+            ) : null}
+            {editorElement}
           </View>
-
-          <TextInput
-            multiline
-            onChangeText={setContentMarkdown}
-            onSelectionChange={(event) => setContentSelection(event.nativeEvent.selection)}
-            placeholder="开始记录..."
-            placeholderTextColor="#94a3b8"
-            selection={contentSelection}
-            style={styles.createMemoContentInput}
-            textAlignVertical="top"
-            value={contentMarkdown}
-          />
 
           {createMutation.error ? (
             <Text style={styles.errorText}>{createMutation.error instanceof Error ? createMutation.error.message : "创建失败"}</Text>
           ) : null}
-        </ScrollView>
+        </View>
         <NotebookPickerModal
           activeNotebookId={targetNotebookId}
           notebookSortMode="manual"
@@ -2233,6 +2427,7 @@ const CreateMemoModal = ({
           onSelect={(nextNotebookId) => {
             setNotebookId(nextNotebookId);
             setNotebookPickerOpen(false);
+            markDirty();
           }}
           visible={notebookPickerOpen}
         />
@@ -4079,7 +4274,7 @@ const MemoDetailModal = ({
           </View>
         )}
         {memo && !memo.isDeleted ? (
-          <Pressable accessibilityLabel="编辑笔记" accessibilityRole="button" onPress={() => onEdit(memo)} style={styles.detailEditFab}>
+          <Pressable accessibilityLabel="编辑笔记" accessibilityRole="button" onPress={() => onRichEdit(memo)} style={styles.detailEditFab}>
             <Pencil color="#ffffff" size={22} />
           </Pressable>
         ) : null}
@@ -4094,7 +4289,7 @@ const MemoDetailModal = ({
                 ) : (
                   <>
                     <ActionSheetItem disabled={isSaving} icon={<Pin color="#0f172a" size={18} />} label={memo.isPinned ? "取消置顶" : "置顶"} onPress={() => closeActionsAndRun(() => onTogglePin(memo))} />
-                    <ActionSheetItem icon={<Bold color="#0f172a" size={18} />} label="富文本编辑" onPress={() => closeActionsAndRun(() => onRichEdit(memo))} />
+                    <ActionSheetItem icon={<Code color="#0f172a" size={18} />} label="Markdown 源代码编辑" onPress={() => closeActionsAndRun(() => onEdit(memo))} />
                   </>
                 )}
                 <ActionSheetItem icon={<Search color="#0f172a" size={18} />} label="查找当前笔记" onPress={() => closeActionsAndRun(() => setSearchOpen((open) => !open))} />
@@ -4148,108 +4343,345 @@ const HighlightedDetailText = ({
 
 const RichEditorModal = ({
   baseUrl,
+  imageCompressionEnabled,
   memo,
   notebooks,
   onClose,
-  token,
+  updateMutation,
 }: {
   baseUrl: string;
+  imageCompressionEnabled: boolean;
   memo: MemoDetail | null;
   notebooks: Notebook[];
   onClose: () => void;
-  token: string;
+  updateMutation: MobileMemoUpdateMutation;
 }) => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const editorUrl = memo && baseUrl ? buildRichEditorUrl(baseUrl, memo.id) : "";
-  const injectedJavaScriptBeforeContentLoaded = buildRichEditorAuthScript(token);
-  const notebookLabel = memo ? notebooks.find((notebook) => notebook.id === memo.notebookId)?.name ?? "未分类" : "笔记本";
-  const saveLabel = error ? "加载失败" : loading ? "加载中" : "编辑中";
+  const { client } = useSession();
+  const editorRef = useRef<LocalTiptapEditorRef>(null);
+  const contentJsonRef = useRef<TiptapDoc>(memo?.contentJson ?? markdownToDoc(memo?.contentMarkdown ?? ""));
+  const contentMarkdownRef = useRef(memo?.contentMarkdown ?? "");
+  const contentSnapshotRef = useRef(JSON.stringify(contentJsonRef.current));
+  const dirtyRef = useRef(false);
+  const flushResolverRef = useRef<(() => void) | null>(null);
+  const savingRef = useRef(false);
+  const uploadingRef = useRef(false);
+  const [title, setTitle] = useState(memo?.title?.trim() || "");
+  const [tagsText, setTagsText] = useState(memo?.tags.join(", ") ?? "");
+  const [notebookId, setNotebookId] = useState(memo?.notebookId ?? "");
+  const [notebookPickerOpen, setNotebookPickerOpen] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [startupMs, setStartupMs] = useState<number | null>(null);
+  const notebookLabel = notebooks.find((notebook) => notebook.id === notebookId)?.name ?? "未分类";
+  const saveLabel = error ? "保存失败" : saving ? "正在保存" : uploading ? "正在上传" : dirty ? "本地草稿" : ready ? "已保存" : "正在启动";
+  const titleRef = useRef(title);
+  const tagsTextRef = useRef(tagsText);
+  const notebookIdRef = useRef(notebookId);
+  titleRef.current = title;
+  tagsTextRef.current = tagsText;
+  notebookIdRef.current = notebookId;
 
   useEffect(() => {
-    if (memo) {
-      setLoading(true);
-      setError(false);
+    if (!memo) {
+      return;
     }
-  }, [memo]);
+    let active = true;
+    setDraftLoaded(false);
+    setDraftRestored(false);
+    setReady(false);
+    setSaving(false);
+    setUploading(false);
+    uploadingRef.current = false;
+    setError(null);
+    setStartupMs(null);
+
+    void readMobileMemoDraft(memo.id).then((draft) => {
+      if (!active) {
+        return;
+      }
+      const restoredDraft = draft?.expectedRevision === memo.revision ? draft : null;
+      const canRestore = restoredDraft !== null;
+      const restoredJson = restoredDraft ? markdownToDoc(restoredDraft.contentMarkdown) : memo.contentJson ?? markdownToDoc(memo.contentMarkdown || "");
+      contentJsonRef.current = restoredJson;
+      contentMarkdownRef.current = restoredDraft ? restoredDraft.contentMarkdown : memo.contentMarkdown || "";
+      contentSnapshotRef.current = JSON.stringify(restoredJson);
+      dirtyRef.current = canRestore;
+      setTitle(restoredDraft ? restoredDraft.title : memo.title?.trim() || "");
+      setTagsText(restoredDraft ? restoredDraft.tagsText : memo.tags.join(", "));
+      setNotebookId(restoredDraft ? restoredDraft.notebookId : memo.notebookId);
+      setDirty(canRestore);
+      setDraftRestored(canRestore);
+      setDraftLoaded(true);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [memo?.id]);
+
+  const persistDraft = async (contentJson: TiptapDoc) => {
+    if (!memo) {
+      return;
+    }
+    const contentSnapshot = JSON.stringify(contentJson);
+    if (contentSnapshot === contentSnapshotRef.current) {
+      flushResolverRef.current?.();
+      flushResolverRef.current = null;
+      return;
+    }
+    contentSnapshotRef.current = contentSnapshot;
+    contentJsonRef.current = contentJson;
+    contentMarkdownRef.current = docToMarkdown(contentJson);
+    dirtyRef.current = true;
+    setDirty(true);
+    setError(null);
+    flushResolverRef.current?.();
+    flushResolverRef.current = null;
+    await writeMobileMemoDraft({
+      memoId: memo.id,
+      expectedRevision: memo.revision,
+      title: titleRef.current.trim(),
+      contentMarkdown: contentMarkdownRef.current,
+      notebookId: notebookIdRef.current,
+      tagsText: tagsTextRef.current,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const save = async () => {
+    if (!memo || savingRef.current || !notebookIdRef.current) {
+      return null;
+    }
+    if (!dirtyRef.current) {
+      return memo;
+    }
+    savingRef.current = true;
+    setSaving(true);
+    setError(null);
+
+    try {
+      const savedMemo = await updateMutation.mutateAsync({
+        memo,
+        payload: {
+          title: titleRef.current.trim() || DEFAULT_MEMO_TITLE,
+          contentJson: contentJsonRef.current,
+          contentMarkdown: contentMarkdownRef.current,
+          notebookId: notebookIdRef.current,
+          tags: parseTags(tagsTextRef.current),
+        },
+      });
+      await clearMobileMemoDraft(memo.id);
+      dirtyRef.current = false;
+      setDirty(false);
+      return savedMemo;
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "保存失败");
+      return null;
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+
+  const flushEditor = async () => {
+    if (!editorRef.current) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        flushResolverRef.current = null;
+        resolve();
+      };
+      flushResolverRef.current = finish;
+      editorRef.current?.flush();
+      setTimeout(finish, 1000);
+    });
+  };
+
+  const requestClose = async () => {
+    if (savingRef.current || uploadingRef.current) {
+      return;
+    }
+    await flushEditor();
+    const savedMemo = await save();
+    if (savedMemo) {
+      onClose();
+    }
+  };
+
+  const pickAndUploadImage = async () => {
+    if (!client || !memo || uploadingRef.current) {
+      return null;
+    }
+    if (memo.id.startsWith("local:")) {
+      Alert.alert("正在同步新笔记", "首次同步完成后即可上传本地图片；图片链接现在就可以直接粘贴到正文。");
+      return null;
+    }
+    const DocumentPicker = await import("expo-document-picker");
+    const result = await DocumentPicker.getDocumentAsync({
+      copyToCacheDirectory: true,
+      multiple: false,
+      type: ["image/*"],
+    });
+    const asset = result.canceled ? null : result.assets[0];
+    if (!asset) {
+      return null;
+    }
+
+    uploadingRef.current = true;
+    setUploading(true);
+    setError(null);
+    try {
+      const uploadAsset = await prepareUploadAsset(asset, imageCompressionEnabled);
+      const form = new FormData();
+      form.append("file", uploadAsset as unknown as Blob);
+      const { resource } = await client.uploadMemoResource(memo.id, form);
+      return {
+        alt: resource.filename || uploadAsset.name || "图片",
+        url: resource.url,
+      };
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "图片上传失败");
+      return null;
+    } finally {
+      uploadingRef.current = false;
+      setUploading(false);
+    }
+  };
+
+  const editorElement = useMemo(
+    () => memo && baseUrl && draftLoaded ? (
+      <LocalTiptapEditor
+        baseUrl={baseUrl}
+        content={contentJsonRef.current}
+        dom={{
+          bounces: false,
+          contentInsetAdjustmentBehavior: "never",
+          overScrollMode: "never",
+          scrollEnabled: false,
+          style: styles.richEditorWebView,
+        }}
+        onChange={persistDraft}
+        onPickImage={pickAndUploadImage}
+        onReady={async (elapsedMs) => {
+          setStartupMs(elapsedMs);
+          setReady(true);
+          recordEditorStartup(elapsedMs);
+        }}
+        ref={editorRef}
+      />
+    ) : null,
+    [baseUrl, draftLoaded, memo?.id]
+  );
+
+  useEffect(() => {
+    if (!memo || !dirty) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      void writeMobileMemoDraft({
+        memoId: memo.id,
+        expectedRevision: memo.revision,
+        title: titleRef.current.trim(),
+        contentMarkdown: contentMarkdownRef.current,
+        notebookId: notebookIdRef.current,
+        tagsText: tagsTextRef.current,
+        updatedAt: new Date().toISOString(),
+      });
+    }, 350);
+    return () => clearTimeout(timeout);
+  }, [dirty, memo, notebookId, tagsText, title]);
 
   return (
-    <Modal animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen" visible={Boolean(memo)}>
+    <Modal animationType="slide" onRequestClose={() => void requestClose()} presentationStyle="fullScreen" visible={Boolean(memo)}>
       <SafeAreaView style={styles.richEditorSafeArea}>
         <View style={styles.modalHeader}>
-          <IconButton onPress={onClose}>
-            <X color="#0f172a" size={20} />
+          <IconButton accessibilityLabel="保存并关闭" disabled={saving || uploading} onPress={() => void requestClose()}>
+            <X color={saving || uploading ? "#cbd5e1" : "#0f172a"} size={20} />
           </IconButton>
           <Text numberOfLines={1} style={styles.modalTitle}>
             富文本编辑器
           </Text>
-          <IconButton onPress={() => editorUrl && Linking.openURL(editorUrl)}>
-            <ExternalLink color="#0f172a" size={18} />
+          <IconButton accessibilityLabel="保存" disabled={saving || uploading || !ready} onPress={() => void flushEditor().then(save)}>
+            {saving ? <ActivityIndicator color="#0f172a" /> : <Check color={saving || uploading || !ready ? "#cbd5e1" : "#0f172a"} size={20} />}
           </IconButton>
         </View>
 
-        {editorUrl ? (
+        {memo && baseUrl ? (
           <View style={styles.richEditorContainer}>
             <View style={styles.richEditorMeta}>
               <View style={styles.richEditorTitleBlock}>
-                <Text numberOfLines={1} style={styles.richEditorTitle}>
-                  {memo?.title?.trim() || DEFAULT_MEMO_TITLE}
-                </Text>
-                <Text numberOfLines={1} style={styles.richEditorNotebook}>
-                  {notebookLabel} · 修订 {memo?.revision ?? "-"}
-                </Text>
+                <TextInput
+                  onChangeText={(value) => {
+                    setTitle(value);
+                    dirtyRef.current = true;
+                    setDirty(true);
+                  }}
+                  placeholder={DEFAULT_MEMO_TITLE}
+                  placeholderTextColor="#94a3b8"
+                  style={styles.richEditorTitle}
+                  value={title}
+                />
+                <Pressable accessibilityRole="button" onPress={() => setNotebookPickerOpen(true)}>
+                  <Text numberOfLines={1} style={styles.richEditorNotebook}>{notebookLabel} · 修订 {memo.revision}</Text>
+                </Pressable>
               </View>
-              <Text style={[styles.richEditorStatus, error ? styles.richEditorStatusError : loading ? styles.richEditorStatusLoading : styles.richEditorStatusActive]}>{saveLabel}</Text>
+              <Text style={[styles.richEditorStatus, error ? styles.richEditorStatusError : saving || uploading || !ready ? styles.richEditorStatusLoading : styles.richEditorStatusActive]}>{saveLabel}</Text>
             </View>
-            {memo?.tags.length ? (
-              <ScrollView contentContainerStyle={styles.richEditorTagsContent} horizontal showsHorizontalScrollIndicator={false} style={styles.richEditorTags}>
-                {memo.tags.map((tag) => (
-                  <Text key={tag} style={styles.tag}>
-                    #{tag}
-                  </Text>
-                ))}
-              </ScrollView>
-            ) : null}
+            <TextInput
+              autoCapitalize="none"
+              onChangeText={(value) => {
+                setTagsText(value);
+                dirtyRef.current = true;
+                setDirty(true);
+              }}
+              placeholder="标签，用逗号分隔"
+              placeholderTextColor="#94a3b8"
+              style={styles.richEditorTagsInput}
+              value={tagsText}
+            />
+            {draftRestored ? <Text style={styles.richEditorDraftNotice}>已恢复上次未完成的本地草稿</Text> : null}
             <View style={styles.richEditorFrame}>
-              {loading ? (
+              {!ready || !draftLoaded ? (
                 <View style={styles.richEditorLoading}>
                   <ActivityIndicator color="#0f172a" />
-                  <Text style={styles.mutedText}>正在加载 TipTap 编辑器</Text>
+                  <Text style={styles.mutedText}>正在启动本地编辑器</Text>
                 </View>
               ) : null}
-              {error ? (
-                <View style={styles.centerState}>
-                  <Text style={styles.errorText}>富文本编辑器加载失败</Text>
-                  <Text style={styles.mutedText}>请确认实例已部署最新版 Web/PWA 资源。</Text>
-                </View>
-              ) : (
-                <Suspense fallback={<ActivityIndicator color="#0f172a" />}>
-                  <LazyWebView
-                    allowsBackForwardNavigationGestures
-                    injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}
-                    onError={() => {
-                      setLoading(false);
-                      setError(true);
-                    }}
-                    onLoadEnd={() => setLoading(false)}
-                    onNavigationStateChange={(state) => {
-                      if (state.url && !state.url.includes("/mobile-edit.html") && !state.url.startsWith("about:")) {
-                        onClose();
-                      }
-                    }}
-                    originWhitelist={["http://*", "https://*"]}
-                    source={{ uri: editorUrl }}
-                    style={styles.richEditorWebView}
-                  />
-                </Suspense>
-              )}
+              {editorElement}
             </View>
+            {error ? <Text style={styles.richEditorInlineError}>{error}</Text> : null}
+            {startupMs !== null && __DEV__ ? <Text style={styles.richEditorPerf}>本地编辑器启动：{startupMs}ms</Text> : null}
           </View>
         ) : (
           <View style={styles.centerState}>
-            <Text style={styles.errorText}>缺少实例地址，无法打开富文本编辑器</Text>
+            <Text style={styles.errorText}>缺少笔记数据，无法打开富文本编辑器</Text>
           </View>
         )}
+        <NotebookPickerModal
+          activeNotebookId={notebookId}
+          notebookSortMode="manual"
+          notebooks={notebooks}
+          notebooksMemoCount={notebooks.reduce((total, notebook) => total + notebook.memoCount, 0)}
+          onClose={() => setNotebookPickerOpen(false)}
+          onSelect={(nextNotebookId) => {
+            setNotebookId(nextNotebookId);
+            setNotebookPickerOpen(false);
+            dirtyRef.current = true;
+            setDirty(true);
+          }}
+          visible={notebookPickerOpen}
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -4268,20 +4700,7 @@ const EditMemoModal = ({
   notebooks: Notebook[];
   onClose: () => void;
   onSaved: (memo: MemoDetail) => void;
-  updateMutation: UseMutationResult<
-    MemoDetail,
-    Error,
-    {
-      memo: MemoDetail;
-      payload: {
-        title?: string;
-        contentMarkdown?: string;
-        isPinned?: boolean;
-        notebookId?: string;
-        tags?: string[];
-      };
-    }
-  >;
+  updateMutation: MobileMemoUpdateMutation;
 }) => {
   const { client } = useSession();
   const [title, setTitle] = useState("");
@@ -4653,12 +5072,15 @@ const MemoList = ({
   error,
   isError,
   isLoading,
+  isLoadingMore = false,
   isRefreshing,
   listDensity,
   memos,
   onMemoLongPress,
   onMemoPress,
+  onLoadMore,
   onRefresh,
+  onRetry,
   selectionMode = false,
   selectedMemoIds = new Set(),
 }: {
@@ -4668,12 +5090,15 @@ const MemoList = ({
   error?: unknown;
   isError: boolean;
   isLoading: boolean;
+  isLoadingMore?: boolean;
   isRefreshing: boolean;
   listDensity: MobileMemoListDensity;
   memos: MemoSummary[];
   onMemoLongPress?: (memo: MemoSummary) => void;
   onMemoPress: (memoId: string) => void;
+  onLoadMore?: () => void;
   onRefresh: () => void;
+  onRetry?: () => void;
   selectionMode?: boolean;
   selectedMemoIds?: Set<string>;
 }) => {
@@ -4690,6 +5115,12 @@ const MemoList = ({
       <View style={styles.centerState}>
         <Text style={styles.errorText}>加载失败</Text>
         <Text style={styles.mutedText}>{error instanceof Error ? error.message : "请稍后再试"}</Text>
+        {onRetry ? (
+          <Pressable accessibilityLabel="重试加载" accessibilityRole="button" onPress={onRetry} style={styles.emptyActionButton}>
+            <RotateCcw color="#ffffff" size={17} />
+            <Text style={styles.emptyActionButtonText}>重试</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
@@ -4701,6 +5132,8 @@ const MemoList = ({
       initialNumToRender={10}
       keyExtractor={(memo) => memo.id}
       maxToRenderPerBatch={8}
+      onEndReached={onLoadMore}
+      onEndReachedThreshold={0.35}
       removeClippedSubviews={Platform.OS === "android"}
       refreshControl={<RefreshControl onRefresh={onRefresh} refreshing={isRefreshing} tintColor="#0f172a" />}
       renderItem={({ item }) => (
@@ -4726,6 +5159,7 @@ const MemoList = ({
           ) : null}
         </View>
       }
+      ListFooterComponent={isLoadingMore ? <ActivityIndicator color="#0f172a" style={styles.listLoadingFooter} /> : null}
       updateCellsBatchingPeriod={32}
       windowSize={7}
     />
@@ -5069,7 +5503,7 @@ const MemoCard = memo(function MemoCard({
         </Text>
       ) : null}
       <View style={[styles.memoMeta, listDensity === "compact" && styles.memoMetaCompact]}>
-        <Text style={styles.memoDate}>{formatDate(memo.updatedAt, localePreference)}</Text>
+        <Text style={styles.memoDate}>{formatMemoPreviewDate(memo.updatedAt, localePreference)}</Text>
         {memo.tags.slice(0, 2).map((tag) => (
           <Text key={tag} style={styles.tag}>
             #{tag}
@@ -5597,6 +6031,24 @@ const formatDate = (value: string, localePreference: MobileLocaleMode = "system"
     minute: "2-digit",
   }).format(new Date(value));
 
+const formatMemoPreviewDate = (value: string, localePreference: MobileLocaleMode = "system") => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const memoDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const locale = getResolvedMobileLocale(localePreference);
+  if (memoDay === today) {
+    return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date);
+  }
+  if (memoDay === today - 24 * 60 * 60 * 1000) {
+    return isEnglishMobileLocale(localePreference) ? "Yesterday" : "昨天";
+  }
+  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "numeric", day: "numeric" }).format(date);
+};
+
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes) || bytes <= 0) {
     return "0 B";
@@ -5708,13 +6160,7 @@ const prepareUploadAsset = async (
 
 const createOptimisticMemo = (
   memo: MemoDetail,
-  payload: {
-    title?: string;
-    contentMarkdown?: string;
-    isPinned?: boolean;
-    notebookId?: string;
-    tags?: string[];
-  }
+  payload: MobileMemoUpdatePayload
 ): MemoDetail => {
   const contentMarkdown = payload.contentMarkdown ?? memo.contentMarkdown;
   const contentText = markdownToLocalText(contentMarkdown);
@@ -5725,6 +6171,7 @@ const createOptimisticMemo = (
     ...(payload.isPinned !== undefined ? { isPinned: payload.isPinned } : {}),
     ...(payload.notebookId !== undefined ? { notebookId: payload.notebookId } : {}),
     ...(payload.tags !== undefined ? { tags: payload.tags } : {}),
+    ...(payload.contentJson !== undefined ? { contentJson: payload.contentJson } : {}),
     ...(payload.contentMarkdown !== undefined
       ? {
           contentMarkdown,
@@ -5749,27 +6196,38 @@ const applyOptimisticMemoToCache = (queryClient: QueryClient, previousMemo: Memo
   const listQueries = queryClient.getQueryCache().findAll({ queryKey: ["mobile", "memos"] });
 
   for (const query of listQueries) {
-    const data = query.state.data as { memos?: MemoSummary[]; totalCount?: number; nextCursor?: string | null } | undefined;
-    if (!data?.memos) {
+    const data = query.state.data as InfiniteData<Awaited<ReturnType<typeof listLocalMemos>>, number> | undefined;
+    if (!Array.isArray(data?.pages) || data.pages.length === 0) {
       continue;
     }
 
     const previouslyMatched = memoMatchesListQuery(previousMemo, query.queryKey);
     const nextMatches = memoMatchesListQuery(nextMemo, query.queryKey);
-    const withoutMemo = data.memos.filter((memo) => memo.id !== nextMemo.id && memo.id !== previousMemo.id);
-    const memos = nextMatches ? sortMemoSummaries([nextMemo, ...withoutMemo], query.queryKey[5]).slice(0, 50) : withoutMemo;
-    const totalCount = Math.max(0, (data.totalCount ?? data.memos.length) + (nextMatches ? 1 : 0) - (previouslyMatched ? 1 : 0));
+    const flattened = data.pages.flatMap((page) => page.memos);
+    const withoutMemo = flattened.filter((memo) => memo.id !== nextMemo.id && memo.id !== previousMemo.id);
+    const nextMemos = nextMatches ? sortMemoSummaries([nextMemo, ...withoutMemo], query.queryKey[5]) : withoutMemo;
+    const totalCount = Math.max(0, data.pages[0].totalCount + (nextMatches ? 1 : 0) - (previouslyMatched ? 1 : 0));
+    let cursor = 0;
+    const pages = data.pages.map((page, index) => {
+      const pageSize = index === data.pages.length - 1 ? Math.min(page.memos.length, Math.max(0, nextMemos.length - cursor)) : page.memos.length;
+      const memos = nextMemos.slice(cursor, cursor + pageSize);
+      cursor += pageSize;
+      return { ...page, memos, totalCount };
+    });
 
-    queryClient.setQueryData(query.queryKey, { ...data, memos, totalCount });
+    queryClient.setQueryData(query.queryKey, { ...data, pages });
   }
 
   const searchQueries = queryClient.getQueryCache().findAll({ queryKey: ["mobile", "search"] });
   for (const query of searchQueries) {
-    const data = query.state.data as { memos?: MemoSummary[] } | undefined;
-    if (data?.memos?.some((memo) => memo.id === nextMemo.id || memo.id === previousMemo.id)) {
+    const data = query.state.data as InfiniteData<Awaited<ReturnType<typeof listLocalMemos>>, number> | undefined;
+    if (Array.isArray(data?.pages) && data.pages.some((page) => page.memos.some((memo) => memo.id === nextMemo.id || memo.id === previousMemo.id))) {
       queryClient.setQueryData(query.queryKey, {
         ...data,
-        memos: data.memos.map((memo) => (memo.id === nextMemo.id || memo.id === previousMemo.id ? nextMemo : memo)),
+        pages: data.pages.map((page) => ({
+          ...page,
+          memos: page.memos.map((memo) => (memo.id === nextMemo.id || memo.id === previousMemo.id ? nextMemo : memo)),
+        })),
       });
     }
   }
@@ -5987,57 +6445,6 @@ const formatRevisionActor = (actor: string) => {
 
   return actor || "system";
 };
-
-const buildRichEditorUrl = (baseUrl: string, memoId: string) => {
-  const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
-  const params = new URLSearchParams({
-    memoId,
-    returnTo: "/",
-  });
-
-  return `${normalizedBaseUrl}/mobile-edit.html#${params.toString()}`;
-};
-
-const buildRichEditorAuthScript = (token: string) => `
-(() => {
-  const token = ${JSON.stringify(token)};
-  if (!token) {
-    return true;
-  }
-
-  const applyAuthHeader = (headers) => {
-    const nextHeaders = new Headers(headers || {});
-    if (!nextHeaders.has("Authorization")) {
-      nextHeaders.set("Authorization", "Bearer " + token);
-    }
-    return nextHeaders;
-  };
-
-  const shouldAuthorize = (input) => {
-    const url = typeof input === "string" ? input : input && "url" in input ? input.url : "";
-    if (!url) {
-      return true;
-    }
-    return url.startsWith("/api/") || url.includes("/api/");
-  };
-
-  const originalFetch = window.fetch.bind(window);
-  window.fetch = (input, init = {}) => {
-    if (!shouldAuthorize(input)) {
-      return originalFetch(input, init);
-    }
-
-    if (input instanceof Request) {
-      const headers = applyAuthHeader(init.headers || input.headers);
-      return originalFetch(new Request(input, { ...init, headers }));
-    }
-
-    return originalFetch(input, { ...init, headers: applyAuthHeader(init.headers) });
-  };
-
-  true;
-})();
-`;
 
 const getSyncQueueStatusLabel = (status: MobileSyncQueueItem["status"]) => {
   const labels: Record<MobileSyncQueueItem["status"], string> = {
@@ -6580,6 +6987,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 12,
   },
+  listLoadingFooter: {
+    marginVertical: 18,
+  },
   assetList: {
     padding: 18,
     paddingBottom: 48,
@@ -6952,10 +7362,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   createMemoMain: {
-    flexGrow: 1,
-    paddingBottom: 32,
+    flex: 1,
+    paddingBottom: 8,
     paddingHorizontal: 12,
     paddingTop: 14,
+  },
+  createMemoDraftNotice: {
+    backgroundColor: "#fffbeb",
+    borderRadius: 8,
+    color: "#92400e",
+    fontSize: 12,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
   createMemoTitleInput: {
     color: "#0f172a",
@@ -7030,6 +7449,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingTop: 18,
   },
+  createMemoEditorFrame: {
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    marginHorizontal: -4,
+    marginTop: 4,
+    overflow: "hidden",
+  },
+  createMemoEditor: {
+    backgroundColor: "#ffffff",
+    flex: 1,
+  },
   richEditorSafeArea: {
     backgroundColor: "#ffffff",
     flex: 1,
@@ -7095,6 +7527,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 9,
   },
+  richEditorTagsInput: {
+    backgroundColor: "#ffffff",
+    borderBottomColor: "#e2e8f0",
+    borderBottomWidth: 1,
+    color: "#64748b",
+    fontSize: 14,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
   richEditorFrame: {
     flex: 1,
   },
@@ -7113,6 +7555,28 @@ const styles = StyleSheet.create({
   richEditorWebView: {
     backgroundColor: "#ffffff",
     flex: 1,
+  },
+  richEditorInlineError: {
+    backgroundColor: "#fef2f2",
+    color: "#b91c1c",
+    fontSize: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  richEditorDraftNotice: {
+    backgroundColor: "#fffbeb",
+    color: "#92400e",
+    fontSize: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  richEditorPerf: {
+    backgroundColor: "#f8fafc",
+    color: "#64748b",
+    fontSize: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    textAlign: "right",
   },
   modalHeader: {
     alignItems: "center",
