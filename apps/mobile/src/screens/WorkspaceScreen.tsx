@@ -7,13 +7,11 @@ import type { MemoFilterMode, MemoSortMode } from "@edgeever/client";
 import {
   Archive,
   BookOpen,
-  Bold,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   CheckSquare,
-  Code,
   Copy,
   ExternalLink,
   FileArchive,
@@ -22,27 +20,20 @@ import {
   Folder,
   Grid,
   HardDrive,
-  Heading2,
   History,
   Home,
   Image as ImageIcon,
-  ImagePlus,
   Info,
-  Italic,
   KeyRound,
-  Link,
   List,
   LogOut,
   Merge,
-  Minus,
   Moon,
   MoreHorizontal,
   MoreVertical,
   Music,
   Pencil,
-  Pin,
   Plus,
-  Quote,
   RefreshCw,
   RotateCcw,
   Search,
@@ -212,11 +203,6 @@ type NotebookOption = {
 };
 type MobileLocaleMode = MobileLocalePreference;
 const useMobileLocalePreference = () => useMobileLocale().preference;
-type TextSelection = {
-  start: number;
-  end: number;
-};
-type MarkdownAction = "heading" | "bold" | "italic" | "bullet" | "checklist" | "quote" | "code" | "link" | "horizontalRule";
 type MobileMemoUpdatePayload = {
   title?: string;
   contentJson?: TiptapDoc;
@@ -248,7 +234,6 @@ export const WorkspaceScreen = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [notesActionsOpen, setNotesActionsOpen] = useState(false);
   const [notebookPickerOpen, setNotebookPickerOpen] = useState(false);
-  const [editingMemo, setEditingMemo] = useState<MemoDetail | null>(null);
   const [richEditingMemo, setRichEditingMemo] = useState<MemoDetail | null>(null);
   const [editorRuntimeWarm, setEditorRuntimeWarm] = useState(false);
   const [tagsManagerOpen, setTagsManagerOpen] = useState(false);
@@ -312,7 +297,7 @@ export const WorkspaceScreen = () => {
   });
 
   const searchQuery = useInfiniteQuery({
-    queryKey: ["mobile", "search", debouncedSearchText, activeNotebookId, memoFilterMode, memoSortMode, activeNotebookDescendantIds, "paged-v3"],
+    queryKey: ["mobile", "search", memoView, debouncedSearchText, activeNotebookId, memoFilterMode, memoSortMode, activeNotebookDescendantIds, "paged-v4"],
     initialPageParam: 0,
     queryFn: async ({ pageParam }) => {
       if (!client) {
@@ -326,6 +311,7 @@ export const WorkspaceScreen = () => {
         limit: 50,
         offset: pageParam,
         sort: memoSortMode,
+        trash: memoView === "trash",
       });
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ? Number(lastPage.nextCursor) : undefined,
@@ -716,7 +702,6 @@ export const WorkspaceScreen = () => {
     },
     onSuccess: async () => {
       await invalidateWorkspace();
-      setEditingMemo(null);
       setRichEditingMemo(null);
       setSelectedMemoId(null);
     },
@@ -903,7 +888,6 @@ export const WorkspaceScreen = () => {
           if (item.kind === "memo.create") {
             await replaceLocalMemoId(dataScope, item.memoId, memo);
             setSelectedMemoId((current) => current === item.memoId ? memo.id : current);
-            setEditingMemo((current) => current?.id === item.memoId ? memo : current);
           } else {
             await upsertLocalMemo(dataScope, memo);
           }
@@ -1054,26 +1038,12 @@ export const WorkspaceScreen = () => {
         notebookName={notebooks.find((notebook) => notebook.id === selectedMemo?.notebookId)?.name ?? "未分类"}
         onClose={closeDetail}
         onDelete={handleDeleteMemo}
-        onEdit={setEditingMemo}
         onRichEdit={setRichEditingMemo}
-        onOpenResources={() => setResourcesOpen(true)}
         onOpenRevisions={setRevisionMemo}
         onRestore={(memo) => restoreMemoMutation.mutate(memo)}
-        onTogglePin={handleTogglePin}
         visible
       /> : null}
 
-      {editingMemo ? <EditMemoModal
-        memo={editingMemo}
-        imageCompressionEnabled={imageCompressionEnabled}
-        notebooks={notebooks}
-        onClose={() => setEditingMemo(null)}
-        onSaved={(memo) => {
-          setEditingMemo(null);
-          setSelectedMemoId(memo.id);
-        }}
-        updateMutation={localUpdateMemoMutation}
-      /> : null}
       {richEditingMemo ? <RichEditorModal
         baseUrl={session?.baseUrl ?? ""}
         imageCompressionEnabled={imageCompressionEnabled}
@@ -1357,9 +1327,8 @@ const NotesView = ({
           </Pressable>
         </View>
 
-        {memoView === "notebook" ? (
-          <>
-            <View style={styles.mobileSearchRow}>
+        <>
+          <View style={styles.mobileSearchRow}>
               <View style={[styles.mobileSearchButton, searchActive && styles.mobileSearchButtonActive, searchActive && resolvedTheme === "dark" && styles.mobileSearchButtonActiveDark]}>
                 <Search color={searchActive && resolvedTheme === "dark" ? "rgb(5, 150, 105)" : searchActive ? "#059669" : "#64748b"} size={17} />
                 <TextInput
@@ -1397,27 +1366,26 @@ const NotesView = ({
                 label="无标签"
                 onPress={() => onFilterModeChange(memoFilterMode === "untagged" ? "all" : "untagged")}
               />
-            </View>
-            {searchActive ? (
-              <View accessibilityLiveRegion="polite" style={styles.mobileListConstraint}>
-                <View style={styles.mobileSearchStatusPill}>
-                  <Search color="#ffffff" size={12} />
-                  <Text style={styles.mobileSearchStatusPillText}>{searchStatusLabel}</Text>
-                </View>
-                <Text numberOfLines={1} style={styles.mobileListConstraintText}>{searchResultLabel}</Text>
-                <Pressable accessibilityLabel={exitSearchLabel} accessibilityRole="button" onPress={() => onSearchTextChange("")}>
-                  <Text style={styles.mobileListConstraintAction}>{exitSearchLabel}</Text>
-                </Pressable>
+          </View>
+          {searchActive ? (
+            <View accessibilityLiveRegion="polite" style={styles.mobileListConstraint}>
+              <View style={styles.mobileSearchStatusPill}>
+                <Search color="#ffffff" size={12} />
+                <Text style={styles.mobileSearchStatusPillText}>{searchStatusLabel}</Text>
               </View>
-            ) : null}
-          </>
-        ) : null}
+              <Text numberOfLines={1} style={styles.mobileListConstraintText}>{searchResultLabel}</Text>
+              <Pressable accessibilityLabel={exitSearchLabel} accessibilityRole="button" onPress={() => onSearchTextChange("")}>
+                <Text style={styles.mobileListConstraintAction}>{exitSearchLabel}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </>
       </View>
 
     <MemoList
       emptyAction={memoView === "notebook" && notebooks.length > 0 ? { label: "新建笔记", onPress: onCreate } : undefined}
-      emptyDescription={memoView === "trash" ? "删除的笔记会显示在这里。" : searchActive ? "换个关键词再试" : memoFilterMode !== "all" ? "试试切换筛选条件，或调整搜索关键词。" : "先创建一条笔记，之后可以在这里快速预览、搜索和批量整理。"}
-      emptyTitle={memoView === "trash" ? "回收站为空" : searchActive ? "没有找到匹配笔记" : memoFilterMode !== "all" ? "没有符合筛选的笔记" : "暂无笔记"}
+      emptyDescription={searchActive ? "换个关键词再试" : memoFilterMode !== "all" ? "试试切换筛选条件，或调整搜索关键词。" : memoView === "trash" ? "删除的笔记会显示在这里。" : "先创建一条笔记，之后可以在这里快速预览、搜索和批量整理。"}
+      emptyTitle={searchActive ? "没有找到匹配笔记" : memoFilterMode !== "all" ? "没有符合筛选的笔记" : memoView === "trash" ? "回收站为空" : "暂无笔记"}
       error={error}
       isError={isError}
       isLoading={isLoading}
@@ -3737,12 +3705,9 @@ const MemoDetailModal = ({
   notebookName,
   onClose,
   onDelete,
-  onEdit,
   onRichEdit,
-  onOpenResources,
   onOpenRevisions,
   onRestore,
-  onTogglePin,
   visible,
 }: {
   isDeleting: boolean;
@@ -3753,18 +3718,16 @@ const MemoDetailModal = ({
   notebookName: string;
   onClose: () => void;
   onDelete: (memo: MemoDetail) => void;
-  onEdit: (memo: MemoDetail) => void;
   onRichEdit: (memo: MemoDetail) => void;
-  onOpenResources: () => void;
   onOpenRevisions: (memo: MemoDetail) => void;
   onRestore: (memo: MemoDetail) => void;
-  onTogglePin: (memo: MemoDetail) => void;
   visible: boolean;
 }) => {
   const { session } = useSession();
   const { resolvedTheme } = useMobileTheme();
   const [actionsOpen, setActionsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchReplaceOpen, setSearchReplaceOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
   const localePreference = useMobileLocalePreference();
@@ -3849,22 +3812,48 @@ const MemoDetailModal = ({
                 <View style={styles.searchBox}>
                   <Search color="#64748b" size={18} />
                   <TextInput
+                    accessibilityLabel="在当前笔记内搜索"
                     autoCapitalize="none"
                     autoCorrect={false}
                     onChangeText={setSearchQuery}
-                    placeholder="搜索当前笔记"
+                    placeholder="在当前笔记内搜索"
                     placeholderTextColor="#94a3b8"
                     style={styles.searchInput}
                     value={searchQuery}
                   />
                   <Text style={[styles.noteSearchCount, searchQuery.trim() && searchMatches.length === 0 && styles.noteSearchCountEmpty]}>{searchMatchLabel}</Text>
                 </View>
-                <View style={styles.tokenActionRow}>
-                  <ActionButton disabled={searchMatches.length === 0} label="上一条" onPress={() => moveSearchMatch(-1)}>
-                    <Search color={searchMatches.length === 0 ? "#cbd5e1" : "#0f172a"} size={16} />
+                {searchReplaceOpen ? (
+                  <View style={styles.searchBox}>
+                    <RefreshCw color="#94a3b8" size={18} />
+                    <TextInput
+                      accessibilityLabel="替换为"
+                      editable={false}
+                      placeholder="替换为"
+                      placeholderTextColor="#94a3b8"
+                      style={styles.searchInput}
+                      value=""
+                    />
+                  </View>
+                ) : null}
+                <View style={styles.richEditorSearchActions}>
+                  <ActionButton disabled={searchMatches.length === 0} label="上一个搜索结果" onPress={() => moveSearchMatch(-1)}>
+                    <ChevronLeft color={searchMatches.length === 0 ? "#cbd5e1" : "#0f172a"} size={16} />
                   </ActionButton>
-                  <ActionButton disabled={searchMatches.length === 0} label="下一条" onPress={() => moveSearchMatch(1)}>
-                    <Search color={searchMatches.length === 0 ? "#cbd5e1" : "#0f172a"} size={16} />
+                  <ActionButton disabled={searchMatches.length === 0} label="下一个搜索结果" onPress={() => moveSearchMatch(1)}>
+                    <ChevronRight color={searchMatches.length === 0 ? "#cbd5e1" : "#0f172a"} size={16} />
+                  </ActionButton>
+                  {searchReplaceOpen ? (
+                    <ActionButton disabled label="全部替换" onPress={() => undefined}>
+                      <RefreshCw color="#cbd5e1" size={16} />
+                    </ActionButton>
+                  ) : null}
+                  <ActionButton label="关闭搜索" onPress={() => {
+                    setSearchOpen(false);
+                    setSearchReplaceOpen(false);
+                    setSearchQuery("");
+                  }}>
+                    <X color="#0f172a" size={16} />
                   </ActionButton>
                 </View>
               </View>
@@ -3900,18 +3889,18 @@ const MemoDetailModal = ({
               <Pressable style={styles.actionSheet}>
                 <View style={styles.actionSheetHandle} />
                 <Text style={styles.actionSheetTitle}>笔记操作</Text>
-                {memo.isDeleted ? (
-                  <ActionSheetItem disabled={isRestoring} icon={<RotateCcw color="#0f172a" size={18} />} label={isRestoring ? "恢复中" : "恢复笔记"} onPress={() => closeActionsAndRun(() => onRestore(memo))} />
-                ) : (
-                  <>
-                    <ActionSheetItem disabled={isSaving} icon={<Pin color="#0f172a" size={18} />} label={memo.isPinned ? "取消置顶" : "置顶"} onPress={() => closeActionsAndRun(() => onTogglePin(memo))} />
-                    <ActionSheetItem icon={<Code color="#0f172a" size={18} />} label="Markdown 源代码编辑" onPress={() => closeActionsAndRun(() => onEdit(memo))} />
-                  </>
-                )}
-                <ActionSheetItem icon={<Search color="#0f172a" size={18} />} label="搜索当前笔记" onPress={() => closeActionsAndRun(() => setSearchOpen((open) => !open))} />
+                <ActionSheetItem icon={<Search color="#0f172a" size={18} />} label="搜索当前笔记" onPress={() => closeActionsAndRun(() => {
+                  setSearchOpen(true);
+                  setSearchReplaceOpen(false);
+                })} />
+                <ActionSheetItem icon={<RefreshCw color="#0f172a" size={18} />} label="替换当前笔记" onPress={() => closeActionsAndRun(() => {
+                  setSearchOpen(true);
+                  setSearchReplaceOpen(true);
+                })} />
                 <ActionSheetItem icon={<History color="#0f172a" size={18} />} label="版本历史" onPress={() => closeActionsAndRun(() => onOpenRevisions(memo))} />
-                <ActionSheetItem icon={<Archive color="#0f172a" size={18} />} label="资源" onPress={() => closeActionsAndRun(onOpenResources)} />
-                <ActionSheetItem danger disabled={isDeleting} icon={<Trash2 color="#b91c1c" size={18} />} label={isDeleting ? "删除中" : memo.isDeleted ? "永久删除" : "删除"} onPress={() => closeActionsAndRun(() => onDelete(memo))} />
+                <ActionSheetItem disabled={isRestoring} icon={<RotateCcw color="#0f172a" size={18} />} label={isRestoring ? "恢复中" : "恢复笔记"} onPress={() => closeActionsAndRun(() => onRestore(memo))} />
+                <View style={styles.listActionDivider} />
+                <ActionSheetItem danger disabled={isDeleting} icon={<Trash2 color="#b91c1c" size={18} />} label={isDeleting ? "删除中" : "彻底删除"} onPress={() => closeActionsAndRun(() => onDelete(memo))} />
               </Pressable>
             </Pressable>
           </Modal>
@@ -4494,382 +4483,6 @@ const RichEditorModal = ({
   );
 };
 
-const EditMemoModal = ({
-  imageCompressionEnabled,
-  memo,
-  notebooks,
-  onClose,
-  onSaved,
-  updateMutation,
-}: {
-  imageCompressionEnabled: boolean;
-  memo: MemoDetail | null;
-  notebooks: Notebook[];
-  onClose: () => void;
-  onSaved: (memo: MemoDetail) => void;
-  updateMutation: MobileMemoUpdateMutation;
-}) => {
-  const { client } = useSession();
-  const [title, setTitle] = useState("");
-  const [contentMarkdown, setContentMarkdown] = useState("");
-  const [contentSelection, setContentSelection] = useState<TextSelection>({ start: 0, end: 0 });
-  const [notebookId, setNotebookId] = useState("");
-  const [tagsText, setTagsText] = useState("");
-  const [replaceQuery, setReplaceQuery] = useState("");
-  const [replaceValue, setReplaceValue] = useState("");
-  const [replaceOpen, setReplaceOpen] = useState(false);
-  const [draftLoaded, setDraftLoaded] = useState(false);
-  const [loadedDraftUpdatedAt, setLoadedDraftUpdatedAt] = useState<string | null>(null);
-  const [insertTextOpen, setInsertTextOpen] = useState(false);
-  const [notebookPickerOpen, setNotebookPickerOpen] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState("");
-  const localePreference = useMobileLocalePreference();
-  const replaceMatches = useMemo(() => getTextSearchMatches(contentMarkdown, replaceQuery), [contentMarkdown, replaceQuery]);
-  const hasEditChanges = Boolean(
-    memo &&
-      (title !== (memo.title?.trim() || "") ||
-        contentMarkdown !== (memo.contentMarkdown || "") ||
-        notebookId !== memo.notebookId ||
-        tagsText !== memo.tags.join(", "))
-  );
-  const canSaveEditMemo = Boolean(memo && notebookId && hasEditChanges && !updateMutation.isPending);
-  const selectedNotebookName = notebooks.find((notebook) => notebook.id === notebookId)?.name ?? "选择笔记本";
-
-  useEffect(() => {
-    let mounted = true;
-
-    if (memo) {
-      setDraftLoaded(false);
-      setTitle(memo.title?.trim() || "");
-      setContentMarkdown(memo.contentMarkdown || "");
-      setContentSelection({ start: 0, end: 0 });
-      setNotebookId(memo.notebookId);
-      setTagsText(memo.tags.join(", "));
-      setReplaceQuery("");
-      setReplaceValue("");
-      setReplaceOpen(false);
-      setUploadProgress("");
-      setLoadedDraftUpdatedAt(null);
-      readMobileMemoDraft(memo.id).then((draft) => {
-        if (!mounted) {
-          return;
-        }
-
-        if (draft && Date.parse(draft.updatedAt) >= Date.parse(memo.updatedAt)) {
-          setTitle(draft.title);
-          setContentMarkdown(draft.contentMarkdown);
-          setNotebookId(draft.notebookId);
-          setTagsText(draft.tagsText);
-          setLoadedDraftUpdatedAt(draft.updatedAt);
-        }
-
-        setDraftLoaded(true);
-      });
-    } else {
-      setDraftLoaded(false);
-      setUploadProgress("");
-      setLoadedDraftUpdatedAt(null);
-    }
-
-    return () => {
-      mounted = false;
-    };
-  }, [memo]);
-
-  useEffect(() => {
-    if (!memo || !draftLoaded) {
-      return;
-    }
-
-    const hasDraftChanges =
-      title !== (memo.title?.trim() || "") ||
-      contentMarkdown !== (memo.contentMarkdown || "") ||
-      notebookId !== memo.notebookId ||
-      tagsText !== memo.tags.join(", ");
-
-    if (!hasDraftChanges) {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      void writeMobileMemoDraft({
-        memoId: memo.id,
-        expectedRevision: memo.revision,
-        title,
-        contentMarkdown,
-        notebookId,
-        tagsText,
-        updatedAt: new Date().toISOString(),
-      });
-    }, 350);
-
-    return () => clearTimeout(timeout);
-  }, [contentMarkdown, draftLoaded, memo, notebookId, tagsText, title]);
-
-  const uploadResourceMutation = useMutation({
-    mutationFn: async () => {
-      if (!client || !memo) {
-        throw new Error("请先打开一条可用笔记");
-      }
-
-      if (memo.isDeleted) {
-        throw new Error("回收站中的笔记不能上传资源");
-      }
-
-      const DocumentPicker = await import("expo-document-picker");
-      const result = await DocumentPicker.getDocumentAsync({
-        copyToCacheDirectory: true,
-        multiple: true,
-        type: "*/*",
-      });
-
-      if (result.canceled) {
-        return null;
-      }
-
-      const assets = result.assets.filter((asset) => asset.uri);
-
-      if (assets.length === 0) {
-        throw new Error("没有选择文件");
-      }
-
-      const uploadedResources = [];
-
-      for (const [index, asset] of assets.entries()) {
-        const filename = asset.name || "文件";
-        setUploadProgress(`处理 ${index + 1}/${assets.length}：${filename}`);
-        const form = new FormData();
-        const uploadAsset = await prepareUploadAsset(asset, imageCompressionEnabled);
-        form.append("file", uploadAsset as unknown as Blob);
-
-        setUploadProgress(`上传 ${index + 1}/${assets.length}：${uploadAsset.name || filename}`);
-        const { resource } = await client.uploadMemoResource(memo.id, form);
-        uploadedResources.push({
-          filename: resource.filename || uploadAsset.name || asset.name || "upload",
-          kind: resource.kind,
-          url: resource.url,
-        });
-      }
-
-      setUploadProgress("插入正文");
-      return uploadedResources;
-    },
-    onSuccess: (resources) => {
-      if (!resources || resources.length === 0) {
-        setUploadProgress("");
-        return;
-      }
-
-      const next = resources.reduce(
-        (draft, resource) => insertResourceMarkdown(draft.value, draft.selection, resource),
-        { value: contentMarkdown, selection: contentSelection }
-      );
-      setContentMarkdown(next.value);
-      setContentSelection(next.selection);
-      setUploadProgress(`已插入 ${resources.length} 个资源`);
-    },
-    onError: () => {
-      setUploadProgress("");
-    },
-  });
-
-  const handleSave = () => {
-    if (!memo || updateMutation.isPending || !notebookId) {
-      return;
-    }
-
-    updateMutation.mutate(
-      {
-        memo,
-        payload: {
-          title: title.trim() || DEFAULT_MEMO_TITLE,
-          contentMarkdown,
-          notebookId,
-          tags: parseTags(tagsText),
-        },
-      },
-      {
-        onSuccess: async (savedMemo) => {
-          await clearMobileMemoDraft(savedMemo.id);
-          setLoadedDraftUpdatedAt(null);
-          onSaved(savedMemo);
-        },
-      }
-    );
-  };
-
-  const requestClose = () => {
-    if (updateMutation.isPending || uploadResourceMutation.isPending) {
-      return;
-    }
-
-    if (!hasEditChanges) {
-      onClose();
-      return;
-    }
-
-    const buttons: Array<{
-      onPress?: () => void;
-      style?: "cancel" | "default" | "destructive";
-      text: string;
-    }> = [
-      { text: "继续编辑", style: "cancel" },
-      { text: "放弃修改", style: "destructive", onPress: onClose },
-    ];
-
-    if (canSaveEditMemo) {
-      buttons.push({ text: "保存", onPress: handleSave });
-    }
-
-    Alert.alert("保存更改？", "当前笔记有未保存修改。", buttons);
-  };
-
-  const replaceAllMatches = () => {
-    if (replaceMatches.length === 0) {
-      return;
-    }
-
-    const nextMarkdown = replaceTextMatches(contentMarkdown, replaceMatches, replaceValue);
-    setContentMarkdown(nextMarkdown);
-    setContentSelection({ start: 0, end: 0 });
-  };
-
-  const pasteClipboardText = async () => {
-    const text = await Clipboard.getStringAsync();
-
-    if (!text.trim()) {
-      return;
-    }
-
-    const next = insertPlainText(contentMarkdown, contentSelection, text);
-    setContentMarkdown(next.value);
-    setContentSelection(next.selection);
-  };
-
-  const insertManualText = (text: string) => {
-    const next = insertPlainText(contentMarkdown, contentSelection, text);
-    setContentMarkdown(next.value);
-    setContentSelection(next.selection);
-  };
-
-  return (
-    <Modal animationType="slide" onRequestClose={requestClose} presentationStyle="pageSheet" visible={Boolean(memo)}>
-      <SafeAreaView style={styles.modalSafeArea}>
-        <View style={styles.modalHeader}>
-          <IconButton accessibilityLabel="关闭编辑" disabled={updateMutation.isPending || uploadResourceMutation.isPending} onPress={requestClose}>
-            <X color={updateMutation.isPending || uploadResourceMutation.isPending ? "#cbd5e1" : "#0f172a"} size={20} />
-          </IconButton>
-          <Text style={styles.modalTitle}>编辑笔记</Text>
-          <IconButton accessibilityLabel="保存笔记" disabled={!canSaveEditMemo} onPress={handleSave}>
-            {updateMutation.isPending ? <ActivityIndicator color="#0f172a" /> : <Check color={canSaveEditMemo ? "#0f172a" : "#cbd5e1"} size={20} />}
-          </IconButton>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.editorForm}>
-          {loadedDraftUpdatedAt ? (
-            <View style={styles.warningPanel}>
-              <Text style={styles.warningText}>已加载本地草稿，最后保存于 {formatDate(loadedDraftUpdatedAt, localePreference)}。保存后会同步到服务端。</Text>
-            </View>
-          ) : null}
-
-          <Text style={styles.label}>笔记本</Text>
-          <Pressable accessibilityRole="button" onPress={() => setNotebookPickerOpen(true)} style={styles.editorNotebookButton}>
-            <Folder color="#64748b" size={18} />
-            <Text numberOfLines={1} style={styles.editorNotebookButtonText}>{selectedNotebookName}</Text>
-            <ChevronRight color="#94a3b8" size={18} />
-          </Pressable>
-
-          <Text style={styles.label}>标题</Text>
-          <TextInput onChangeText={setTitle} placeholder={DEFAULT_MEMO_TITLE} placeholderTextColor="#94a3b8" style={styles.titleInput} value={title} />
-
-          <Text style={styles.label}>标签</Text>
-          <TextInput onChangeText={setTagsText} placeholder="用逗号分隔标签" placeholderTextColor="#94a3b8" style={styles.titleInput} value={tagsText} />
-
-          <Text style={styles.label}>正文</Text>
-          <MarkdownToolbar
-            isUploading={uploadResourceMutation.isPending}
-            onAction={(action) => {
-              const next = applyMarkdownAction(contentMarkdown, contentSelection, action);
-              setContentMarkdown(next.value);
-              setContentSelection(next.selection);
-            }}
-            onInsertText={() => setInsertTextOpen(true)}
-            onPasteText={() => void pasteClipboardText()}
-            onUploadResource={() => uploadResourceMutation.mutate()}
-          />
-          {uploadProgress ? <Text style={styles.assetsHint}>{uploadProgress}</Text> : null}
-          <Pressable accessibilityRole="button" onPress={() => setReplaceOpen((open) => !open)} style={styles.editorFindToggle}>
-            <Search color="#64748b" size={17} />
-            <Text style={styles.editorFindToggleText}>{replaceOpen ? "收起查找与替换" : "查找与替换"}</Text>
-            <ChevronDown color="#94a3b8" size={17} style={replaceOpen ? { transform: [{ rotate: "180deg" }] } : undefined} />
-          </Pressable>
-          {replaceOpen ? (
-            <View style={styles.noteSearchPanel}>
-              <View style={styles.searchBox}>
-                <Search color="#64748b" size={18} />
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={setReplaceQuery}
-                  placeholder="查找正文"
-                  placeholderTextColor="#94a3b8"
-                  style={styles.searchInput}
-                  value={replaceQuery}
-                />
-                <Text style={[styles.noteSearchCount, replaceQuery.trim() && replaceMatches.length === 0 && styles.noteSearchCountEmpty]}>{replaceQuery.trim() ? replaceMatches.length : 0}</Text>
-              </View>
-              <View style={styles.searchBox}>
-                <RefreshCw color="#64748b" size={18} />
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={setReplaceValue}
-                  placeholder="替换为"
-                  placeholderTextColor="#94a3b8"
-                  style={styles.searchInput}
-                  value={replaceValue}
-                />
-              </View>
-              <ActionButton disabled={replaceMatches.length === 0} label="全部替换" onPress={replaceAllMatches}>
-                <RefreshCw color={replaceMatches.length === 0 ? "#cbd5e1" : "#0f172a"} size={16} />
-              </ActionButton>
-            </View>
-          ) : null}
-          <TextInput
-            multiline
-            onChangeText={setContentMarkdown}
-            onSelectionChange={(event) => setContentSelection(event.nativeEvent.selection)}
-            placeholder="Markdown 正文"
-            placeholderTextColor="#94a3b8"
-            selection={contentSelection}
-            style={styles.markdownInput}
-            textAlignVertical="top"
-            value={contentMarkdown}
-          />
-
-          {updateMutation.error ? (
-            <Text style={styles.errorText}>{updateMutation.error instanceof Error ? updateMutation.error.message : "保存失败"}</Text>
-          ) : null}
-          {uploadResourceMutation.error ? (
-            <Text style={styles.errorText}>{uploadResourceMutation.error instanceof Error ? uploadResourceMutation.error.message : "上传失败"}</Text>
-          ) : null}
-        </ScrollView>
-        <InsertTextModal onClose={() => setInsertTextOpen(false)} onInsert={insertManualText} visible={insertTextOpen} />
-        <NotebookPickerModal
-          activeNotebookId={notebookId}
-          notebooks={notebooks}
-          onClose={() => setNotebookPickerOpen(false)}
-          onSelect={(nextNotebookId) => {
-            setNotebookId(nextNotebookId);
-            setNotebookPickerOpen(false);
-          }}
-          visible={notebookPickerOpen}
-        />
-      </SafeAreaView>
-    </Modal>
-  );
-};
-
 const MemoList = ({
   emptyAction,
   emptyDescription,
@@ -5442,54 +5055,6 @@ const BottomNavItem = ({ active = false, icon, label, onPress }: { active?: bool
   </Pressable>
 );
 
-const MarkdownToolbar = ({
-  isUploading = false,
-  onAction,
-  onInsertText,
-  onPasteText,
-  onUploadResource,
-}: {
-  isUploading?: boolean;
-  onAction: (action: MarkdownAction) => void;
-  onInsertText?: () => void;
-  onPasteText?: () => void;
-  onUploadResource?: () => void;
-}) => (
-  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.markdownToolbar}>
-    {onPasteText ? <MarkdownToolbarButton icon={<Copy color="#334155" size={15} />} label="粘贴" onPress={onPasteText} /> : null}
-    {onInsertText ? <MarkdownToolbarButton icon={<Pencil color="#334155" size={15} />} label="输入" onPress={onInsertText} /> : null}
-    {onUploadResource ? (
-      <MarkdownToolbarButton disabled={isUploading} icon={<ImagePlus color="#334155" size={15} />} label={isUploading ? "上传中" : "资源"} onPress={onUploadResource} />
-    ) : null}
-    <MarkdownToolbarButton icon={<Heading2 color="#334155" size={15} />} label="标题" onPress={() => onAction("heading")} />
-    <MarkdownToolbarButton icon={<Bold color="#334155" size={15} />} label="加粗" onPress={() => onAction("bold")} />
-    <MarkdownToolbarButton icon={<Italic color="#334155" size={15} />} label="斜体" onPress={() => onAction("italic")} />
-    <MarkdownToolbarButton icon={<List color="#334155" size={15} />} label="列表" onPress={() => onAction("bullet")} />
-    <MarkdownToolbarButton icon={<CheckSquare color="#334155" size={15} />} label="待办" onPress={() => onAction("checklist")} />
-    <MarkdownToolbarButton icon={<Quote color="#334155" size={15} />} label="引用" onPress={() => onAction("quote")} />
-    <MarkdownToolbarButton icon={<Minus color="#334155" size={15} />} label="分割线" onPress={() => onAction("horizontalRule")} />
-    <MarkdownToolbarButton icon={<Code color="#334155" size={15} />} label="代码" onPress={() => onAction("code")} />
-    <MarkdownToolbarButton icon={<Link color="#334155" size={15} />} label="链接" onPress={() => onAction("link")} />
-  </ScrollView>
-);
-
-const MarkdownToolbarButton = ({
-  disabled = false,
-  icon,
-  label,
-  onPress,
-}: {
-  disabled?: boolean;
-  icon: ReactNode;
-  label: string;
-  onPress: () => void;
-}) => (
-  <Pressable disabled={disabled} onPress={onPress} style={[styles.markdownToolButton, disabled && styles.buttonDisabled]}>
-    {icon}
-    <Text style={styles.markdownToolText}>{label}</Text>
-  </Pressable>
-);
-
 const CreateMemoToolbarButton = ({
   accessibilityLabel,
   icon,
@@ -5509,63 +5074,6 @@ const CreateMemoToolbarButton = ({
   </Pressable>
 );
 
-const InsertTextModal = ({
-  onClose,
-  onInsert,
-  visible,
-}: {
-  onClose: () => void;
-  onInsert: (text: string) => void;
-  visible: boolean;
-}) => {
-  const [text, setText] = useState("");
-
-  useEffect(() => {
-    if (!visible) {
-      setText("");
-    }
-  }, [visible]);
-
-  const handleInsert = () => {
-    if (!text.trim()) {
-      return;
-    }
-
-    onInsert(text);
-    setText("");
-    onClose();
-  };
-
-  return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
-      <Pressable onPress={onClose} style={styles.actionSheetBackdrop}>
-        <Pressable style={styles.insertTextSheet}>
-          <View style={styles.actionSheetHandle} />
-          <Text style={styles.actionSheetTitle}>输入文本</Text>
-          <TextInput
-            autoFocus
-            multiline
-            onChangeText={setText}
-            placeholder="输入要插入到正文的内容"
-            placeholderTextColor="#94a3b8"
-            style={styles.insertTextInput}
-            textAlignVertical="top"
-            value={text}
-          />
-          <View style={styles.actionRow}>
-            <ActionButton label="取消" onPress={onClose}>
-              <X color="#0f172a" size={16} />
-            </ActionButton>
-            <ActionButton disabled={!text.trim()} label="插入" onPress={handleInsert}>
-              <Check color={text.trim() ? "#0f172a" : "#cbd5e1"} size={16} />
-            </ActionButton>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-};
-
 const parseTags = (value: string) =>
   Array.from(
     new Set(
@@ -5575,127 +5083,6 @@ const parseTags = (value: string) =>
         .filter(Boolean)
     )
   );
-
-const applyMarkdownAction = (value: string, selection: TextSelection, action: MarkdownAction) => {
-  const start = Math.max(0, Math.min(selection.start, value.length));
-  const end = Math.max(start, Math.min(selection.end, value.length));
-  const selectedText = value.slice(start, end);
-
-  if (action === "heading") {
-    return prefixSelectedLines(value, start, end, "## ");
-  }
-
-  if (action === "bullet") {
-    return prefixSelectedLines(value, start, end, "- ");
-  }
-
-  if (action === "checklist") {
-    return prefixSelectedLines(value, start, end, "- [ ] ");
-  }
-
-  if (action === "quote") {
-    return prefixSelectedLines(value, start, end, "> ");
-  }
-
-  if (action === "horizontalRule") {
-    const separator = value.slice(0, start).endsWith("\n") ? "" : "\n";
-    const trailing = value.slice(end).startsWith("\n") ? "" : "\n";
-    const replacement = `${separator}---${trailing}`;
-    const nextValue = replaceRange(value, start, end, replacement);
-    const nextPosition = start + replacement.length;
-
-    return {
-      value: nextValue,
-      selection: { start: nextPosition, end: nextPosition },
-    };
-  }
-
-  if (action === "bold") {
-    return wrapSelectedText(value, start, end, "**", "**", "加粗文本");
-  }
-
-  if (action === "italic") {
-    return wrapSelectedText(value, start, end, "*", "*", "斜体文本");
-  }
-
-  if (action === "link") {
-    return wrapSelectedText(value, start, end, "[", "](https://)", "链接文本");
-  }
-
-  if (selectedText.includes("\n")) {
-    return wrapSelectedText(value, start, end, "\n```\n", "\n```\n", selectedText || "代码块");
-  }
-
-  return wrapSelectedText(value, start, end, "`", "`", "代码");
-};
-
-const wrapSelectedText = (value: string, start: number, end: number, before: string, after: string, fallbackText: string) => {
-  const selectedText = value.slice(start, end) || fallbackText;
-  const replacement = `${before}${selectedText}${after}`;
-  const nextValue = replaceRange(value, start, end, replacement);
-  const selectedStart = start + before.length;
-  const selectedEnd = selectedStart + selectedText.length;
-
-  return {
-    value: nextValue,
-    selection: { start: selectedStart, end: selectedEnd },
-  };
-};
-
-const prefixSelectedLines = (value: string, start: number, end: number, prefix: string) => {
-  const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
-  const nextLineBreak = value.indexOf("\n", end);
-  const lineEnd = nextLineBreak === -1 ? value.length : nextLineBreak;
-  const block = value.slice(lineStart, lineEnd) || "";
-  const replacement = block
-    .split("\n")
-    .map((line) => (line.startsWith(prefix) ? line : `${prefix}${line}`))
-    .join("\n");
-  const nextValue = replaceRange(value, lineStart, lineEnd, replacement);
-
-  return {
-    value: nextValue,
-    selection: { start: lineStart, end: lineStart + replacement.length },
-  };
-};
-
-const insertResourceMarkdown = (
-  value: string,
-  selection: TextSelection,
-  resource: {
-    filename: string;
-    kind: "image" | "attachment";
-    url: string;
-  }
-) => {
-  const start = Math.max(0, Math.min(selection.start, value.length));
-  const end = Math.max(start, Math.min(selection.end, value.length));
-  const markdown = appendResourceMarkdown("", resource).trim();
-  const separatorBefore = start > 0 && !value.slice(0, start).endsWith("\n") ? "\n\n" : "";
-  const separatorAfter = end < value.length && !value.slice(end).startsWith("\n") ? "\n\n" : "\n";
-  const replacement = `${separatorBefore}${markdown}${separatorAfter}`;
-  const nextValue = replaceRange(value, start, end, replacement);
-  const nextPosition = start + replacement.length;
-
-  return {
-    value: nextValue,
-    selection: { start: nextPosition, end: nextPosition },
-  };
-};
-
-const insertPlainText = (value: string, selection: TextSelection, text: string) => {
-  const start = Math.max(0, Math.min(selection.start, value.length));
-  const end = Math.max(start, Math.min(selection.end, value.length));
-  const nextValue = replaceRange(value, start, end, text);
-  const nextPosition = start + text.length;
-
-  return {
-    value: nextValue,
-    selection: { start: nextPosition, end: nextPosition },
-  };
-};
-
-const replaceRange = (value: string, start: number, end: number, replacement: string) => `${value.slice(0, start)}${replacement}${value.slice(end)}`;
 
 const useDebouncedValue = <T,>(value: T, delay: number) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -6222,16 +5609,6 @@ const getTextSearchMatches = (text: string, query: string) => {
   }
 
   return matches;
-};
-
-const replaceTextMatches = (text: string, matches: Array<{ end: number; start: number }>, replacement: string) => {
-  let nextText = text;
-
-  for (const match of [...matches].reverse()) {
-    nextText = `${nextText.slice(0, match.start)}${replacement}${nextText.slice(match.end)}`;
-  }
-
-  return nextText;
 };
 
 const buildMcpRemoteConfig = (baseUrl: string, token: string) =>
@@ -7291,19 +6668,6 @@ const baseWorkspaceStyles = StyleSheet.create({
     gap: 6,
     minWidth: 0,
   },
-  warningPanel: {
-    backgroundColor: "#fffbeb",
-    borderColor: "#fde68a",
-    borderRadius: 8,
-    borderWidth: 1,
-    padding: 12,
-  },
-  warningText: {
-    color: "#92400e",
-    fontSize: 13,
-    fontWeight: "700",
-    lineHeight: 19,
-  },
   buttonDisabled: {
     opacity: 0.5,
   },
@@ -7825,26 +7189,6 @@ const baseWorkspaceStyles = StyleSheet.create({
   sheetOptionCheckHidden: {
     opacity: 0,
   },
-  insertTextSheet: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    gap: 10,
-    paddingBottom: 28,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-  },
-  insertTextInput: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#e2e8f0",
-    borderRadius: 8,
-    borderWidth: 1,
-    color: "#0f172a",
-    fontSize: 15,
-    lineHeight: 22,
-    minHeight: 160,
-    padding: 12,
-  },
   detailContent: {
     paddingBottom: 112,
     paddingHorizontal: 16,
@@ -7984,12 +7328,6 @@ const baseWorkspaceStyles = StyleSheet.create({
     backgroundColor: "#fde68a",
     color: "#0f172a",
     fontWeight: "800",
-  },
-  actionRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 16,
   },
   actionButton: {
     alignItems: "center",
@@ -8364,36 +7702,6 @@ const baseWorkspaceStyles = StyleSheet.create({
     padding: 18,
     paddingBottom: 48,
   },
-  editorNotebookButton: {
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderColor: "#e2e8f0",
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 10,
-    minHeight: 48,
-    paddingHorizontal: 13,
-  },
-  editorNotebookButtonText: {
-    color: "#0f172a",
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  editorFindToggle: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 8,
-    minHeight: 40,
-    paddingHorizontal: 4,
-  },
-  editorFindToggleText: {
-    color: "#475569",
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "700",
-  },
   revisionHistoryContent: {
     gap: 12,
     padding: 16,
@@ -8555,47 +7863,6 @@ const baseWorkspaceStyles = StyleSheet.create({
   label: {
     color: "#334155",
     fontSize: 13,
-    fontWeight: "800",
-  },
-  titleInput: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e2e8f0",
-    borderRadius: 8,
-    borderWidth: 1,
-    color: "#0f172a",
-    fontSize: 17,
-    minHeight: 48,
-    paddingHorizontal: 14,
-  },
-  markdownInput: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e2e8f0",
-    borderRadius: 8,
-    borderWidth: 1,
-    color: "#0f172a",
-    fontSize: 16,
-    lineHeight: 23,
-    minHeight: 260,
-    padding: 14,
-  },
-  markdownToolbar: {
-    flexGrow: 0,
-  },
-  markdownToolButton: {
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderColor: "#e2e8f0",
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 5,
-    marginRight: 8,
-    minHeight: 34,
-    paddingHorizontal: 10,
-  },
-  markdownToolText: {
-    color: "#334155",
-    fontSize: 12,
     fontWeight: "800",
   },
   bottomNav: {
