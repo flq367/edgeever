@@ -33,3 +33,60 @@ export const getMobileCenteredScrollOffset = (
   rowHeight: number,
   viewportHeight: number
 ): number => Math.max(0, rowTop - Math.max(0, viewportHeight - rowHeight) / 2);
+
+export type MobileNotebookSearchItem = {
+  id: string;
+  name: string;
+  parentId?: string | null;
+};
+
+export const getMobileNotebookSearchVisibleIds = (
+  notebooks: ReadonlyArray<MobileNotebookSearchItem>,
+  searchText: string
+): Set<string> => {
+  const query = searchText.trim().toLocaleLowerCase("zh-CN");
+  const notebookById = new Map(notebooks.map((notebook) => [notebook.id, notebook]));
+
+  if (!query) {
+    return new Set(notebookById.keys());
+  }
+
+  const childrenByParentId = new Map<string, string[]>();
+  for (const notebook of notebooks) {
+    if (!notebook.parentId || !notebookById.has(notebook.parentId)) {
+      continue;
+    }
+    const children = childrenByParentId.get(notebook.parentId) ?? [];
+    children.push(notebook.id);
+    childrenByParentId.set(notebook.parentId, children);
+  }
+
+  const visibleIds = new Set<string>();
+  const includeDescendants = (notebookId: string, visited: Set<string>) => {
+    if (visited.has(notebookId)) {
+      return;
+    }
+    visited.add(notebookId);
+    visibleIds.add(notebookId);
+    for (const childId of childrenByParentId.get(notebookId) ?? []) {
+      includeDescendants(childId, visited);
+    }
+  };
+
+  for (const notebook of notebooks) {
+    if (!notebook.name.toLocaleLowerCase("zh-CN").includes(query)) {
+      continue;
+    }
+
+    includeDescendants(notebook.id, new Set());
+    const visitedAncestors = new Set<string>([notebook.id]);
+    let parentId = notebook.parentId ?? null;
+    while (parentId && !visitedAncestors.has(parentId)) {
+      visitedAncestors.add(parentId);
+      visibleIds.add(parentId);
+      parentId = notebookById.get(parentId)?.parentId ?? null;
+    }
+  }
+
+  return visibleIds;
+};

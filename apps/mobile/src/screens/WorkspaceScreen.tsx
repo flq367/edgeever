@@ -79,7 +79,7 @@ import { Alert, Pressable, Text, TextInput } from "../components/LocalizedText";
 import Markdown, { type RenderRules } from "react-native-markdown-display";
 import { SvgXml } from "react-native-svg";
 import { buildRevisionDiffRows, createExcerpt, docToMarkdown, docToText, getNotebookDescendantIds, markdownToDoc, type ApiToken, type AuthUser, type MemoDetail, type MemoRevision, type MemoSummary, type Notebook, type ResourceListItem, type RevisionDiffRow, type TagSummary, type TiptapDoc } from "@edgeever/shared";
-import { MOBILE_UI_METRICS, getMobileCenteredScrollOffset, toggleMobileMemoFilterMode, toggleMobileMemoSelection } from "@edgeever/shared/mobile-ui";
+import { MOBILE_UI_METRICS, getMobileCenteredScrollOffset, getMobileNotebookSearchVisibleIds, toggleMobileMemoFilterMode, toggleMobileMemoSelection } from "@edgeever/shared/mobile-ui";
 import { clearMobileMemoDraft, clearMobileNewMemoDraft, readMobileMemoDraft, readMobileNewMemoDraft, writeMobileMemoDraft, writeMobileNewMemoDraft, type MobileMemoDraft } from "../lib/mobile-drafts";
 import {
   readMobileImageCompressionEnabled,
@@ -105,6 +105,7 @@ import {
 import {
   createMobileDataScope,
   getLocalMemo,
+  isMobileLocalMirrorInitialized,
   listLocalMemos,
   listLocalNotebooks,
   replaceLocalMemoId,
@@ -126,6 +127,7 @@ const resolveEditableMemoTitle = (title?: string | null) => {
 };
 const MOBILE_APP_VERSION = Constants.expoConfig?.version ?? "0.1.2";
 const GITHUB_REPOSITORY_URL = "https://github.com/tianma-if/edgeever";
+const ANDROID_SYSTEM_NAVIGATION_FALLBACK = 48;
 
 const formatExecutionEnvironment = (environment: string | null | undefined, localePreference: MobileLocaleMode = "system") => {
   const english = isEnglishMobileLocale(localePreference);
@@ -268,12 +270,10 @@ export const WorkspaceScreen = () => {
         throw new Error("Client is not ready");
       }
 
-      let local = await listLocalNotebooks(dataScope);
-      if (local.notebooks.length === 0) {
+      if (!(await isMobileLocalMirrorInitialized(dataScope))) {
         await syncMobileLocalMirror(client, dataScope);
-        local = await listLocalNotebooks(dataScope);
       }
-      return local;
+      return listLocalNotebooks(dataScope);
     },
     enabled: Boolean(client),
   });
@@ -291,6 +291,10 @@ export const WorkspaceScreen = () => {
     queryFn: async ({ pageParam }) => {
       if (!client) {
         throw new Error("Client is not ready");
+      }
+
+      if (pageParam === 0 && !(await isMobileLocalMirrorInitialized(dataScope))) {
+        await syncMobileLocalMirror(client, dataScope);
       }
 
       return listLocalMemos(dataScope, {
@@ -997,7 +1001,7 @@ export const WorkspaceScreen = () => {
       {activeView === "notes" ? (
         <NotesView
           activeNotebook={activeNotebook}
-          isLoading={searchActive ? searchQuery.isLoading : memosQuery.isLoading}
+          isLoading={notebooksQuery.isLoading || (searchActive ? searchQuery.isLoading : memosQuery.isLoading)}
           isLoadingMore={searchActive ? searchQuery.isFetchingNextPage : memosQuery.isFetchingNextPage}
           isRefreshing={isRefreshing}
           memoFilterMode={memoFilterMode}
@@ -1030,8 +1034,8 @@ export const WorkspaceScreen = () => {
             : memosQuery.data?.pages[0]?.totalCount ?? memos.length}
           selectionMode={selectionMode}
           selectedMemoIds={selectedMemoIds}
-          error={searchActive ? searchQuery.error : memosQuery.error}
-          isError={searchActive ? searchQuery.isError : memosQuery.isError}
+          error={notebooksQuery.error ?? (searchActive ? searchQuery.error : memosQuery.error)}
+          isError={notebooksQuery.isError || (searchActive ? searchQuery.isError : memosQuery.isError)}
         />
       ) : null}
 
@@ -1571,7 +1575,7 @@ const NotebookPickerModal = ({
   const childNotebookIds = getNotebookParentIdSet(notebooks);
   const activeNotebookAncestorIds = getNotebookAncestorIds(notebooks, activeNotebookId);
   const visibleNotebookOptions = searchQuery
-    ? filterNotebookOptions(notebookOptions, searchText)
+    ? filterNotebookOptionsById(notebookOptions, getMobileNotebookSearchVisibleIds(notebooks, searchText))
     : filterCollapsedNotebookOptions(notebookOptions, collapsedNotebookIds);
   const activeNotebookName = activeNotebookId === ALL_NOTES_ID
     ? "全部笔记"
@@ -3958,6 +3962,7 @@ const MemoDetailModal = ({
 }) => {
   const { session } = useSession();
   const { resolvedTheme } = useMobileTheme();
+  const safeAreaInsets = useSafeAreaInsets();
   const [actionsOpen, setActionsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchReplaceOpen, setSearchReplaceOpen] = useState(false);
@@ -3983,6 +3988,10 @@ const MemoDetailModal = ({
   const detailText = memo?.contentMarkdown || memo?.contentText || "没有正文内容";
   const searchMatches = useMemo(() => getTextSearchMatches(detailText, searchQuery), [detailText, searchQuery]);
   const searchMatchLabel = searchQuery.trim() ? `${searchMatches.length > 0 ? activeMatchIndex + 1 : 0}/${searchMatches.length}` : "0/0";
+  const editFabBottom = Math.max(
+    safeAreaInsets.bottom,
+    Platform.OS === "android" ? ANDROID_SYSTEM_NAVIGATION_FALLBACK : 0
+  ) + 16;
 
   useEffect(() => {
     setActiveMatchIndex(0);
@@ -4111,7 +4120,7 @@ const MemoDetailModal = ({
               beginEditorStartup();
               onRichEdit(memo);
             }}
-            style={styles.detailEditFab}
+            style={[styles.detailEditFab, { bottom: editFabBottom }]}
           >
             <Pencil color="#ffffff" size={20} />
           </Pressable>
@@ -4586,8 +4595,12 @@ const MemoList = ({
 }) => {
   if (isLoading) {
     return (
-      <View style={styles.memoListStateWrap}>
-        <Text style={styles.memoListLoadingText}>正在拉取最新笔记</Text>
+      <View accessibilityLabel="正在加载笔记" accessibilityLiveRegion="polite" style={styles.memoListStateWrap}>
+        <View style={styles.memoListLoadingCard}>
+          <ActivityIndicator color="#059669" size="large" />
+          <Text style={styles.memoListLoadingTitle}>正在加载笔记</Text>
+          <Text style={styles.memoListLoadingDescription}>正在同步笔记本和笔记，首次登录可能需要一点时间。</Text>
+        </View>
       </View>
     );
   }
@@ -5208,6 +5221,9 @@ const filterNotebookOptions = (options: NotebookOption[], searchText: string) =>
 
   return options.filter(({ notebook }) => notebook.name.toLowerCase().includes(query) || (notebook.slug || "").toLowerCase().includes(query));
 };
+
+const filterNotebookOptionsById = (options: NotebookOption[], visibleIds: ReadonlySet<string>) =>
+  options.filter(({ notebook }) => visibleIds.has(notebook.id));
 
 const getNotebookParentIdSet = (notebooks: Notebook[]) => {
   const notebookIds = new Set(notebooks.map((notebook) => notebook.id));
@@ -6488,10 +6504,29 @@ const baseWorkspaceStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 16,
   },
-  memoListLoadingText: {
+  memoListLoadingCard: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderColor: "#a7f3d0",
+    borderRadius: 8,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 34,
+  },
+  memoListLoadingTitle: {
+    color: "#0f172a",
+    fontSize: 16,
+    fontWeight: "800",
+    marginTop: 14,
+  },
+  memoListLoadingDescription: {
     color: "#64748b",
-    fontSize: 14,
-    paddingHorizontal: 8,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 7,
+    maxWidth: 300,
+    textAlign: "center",
   },
   memoListErrorCard: {
     alignItems: "center",
@@ -7394,7 +7429,6 @@ const baseWorkspaceStyles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#10b981",
     borderRadius: 24,
-    bottom: 16,
     elevation: 6,
     height: 48,
     justifyContent: "center",

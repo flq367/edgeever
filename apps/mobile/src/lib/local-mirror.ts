@@ -1,7 +1,7 @@
 import type { createEdgeEverClient, ListMemosResponse, MemoFilterMode, MemoSortMode } from "@edgeever/client";
 import type { MemoDetail, MemoSummary, Notebook } from "@edgeever/shared";
 import * as SQLite from "expo-sqlite";
-import { hasMobileSyncCursorRewound, hasMobileSyncIdentityChanged } from "./mobile-sync-protocol";
+import { hasMobileSyncCursorRewound, hasMobileSyncIdentityChanged, isMobileSyncMetadataInitialized } from "./mobile-sync-protocol";
 
 const DATABASE_NAME = "edgeever-mobile.db";
 const BOOTSTRAP_PAGE_SIZE = 200;
@@ -13,6 +13,7 @@ const syncPromises = new Map<string, Promise<number>>();
 type StoredMemoRow = { data_json: string };
 type StoredNotebookRow = { data_json: string; memo_count: number; last_memo_updated_at: string | null };
 type CursorRow = { value: string };
+type SyncMetaRow = CursorRow & { key: string };
 type IdMappingRow = { remote_id: string };
 
 export type LocalMemoListParams = {
@@ -28,6 +29,18 @@ export type LocalMemoListParams = {
 
 export const createMobileDataScope = (baseUrl: string, userId?: string | null) =>
   `${baseUrl.trim().toLowerCase()}|${userId ?? "anonymous"}`;
+
+export const isMobileLocalMirrorInitialized = async (scope: string) => {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<SyncMetaRow>(
+    `SELECT key, value FROM mobile_sync_meta WHERE scope = ? AND key IN ('cursor', 'identity')`,
+    scope
+  );
+  const metadata = new Map(rows.map((row) => [row.key, row.value]));
+  const cursorValue = metadata.get("cursor");
+  const identityValue = metadata.get("identity");
+  return isMobileSyncMetadataInitialized(cursorValue, identityValue);
+};
 
 export const listLocalNotebooks = async (scope: string): Promise<{ notebooks: Notebook[] }> => {
   const db = await getDatabase();
