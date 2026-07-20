@@ -1,3 +1,5 @@
+import type { ImageWidthPresetId } from "./image-display";
+
 export type MobileEditorLocale = "zh-CN" | "en-US";
 
 export type MobileEditorToolbarActionId =
@@ -35,6 +37,13 @@ const MOBILE_EDITOR_COPY = {
       blockquote: "引用",
       horizontalRule: "分割线",
     },
+    imageScale: "图片显示尺寸",
+    imageSizes: {
+      small: "较小",
+      medium: "适中",
+      large: "较大",
+      full: "铺满",
+    },
   },
   "en-US": {
     placeholder: "Start writing...",
@@ -45,6 +54,13 @@ const MOBILE_EDITOR_COPY = {
       bulletList: "Bullet list",
       blockquote: "Quote",
       horizontalRule: "Horizontal rule",
+    },
+    imageScale: "Image display size",
+    imageSizes: {
+      small: "Small",
+      medium: "Medium",
+      large: "Large",
+      full: "Full",
     },
   },
 } as const;
@@ -59,6 +75,14 @@ export const getMobileEditorToolbarActionLabel = (
   action: MobileEditorToolbarActionId,
   locale: MobileEditorLocale
 ): string => MOBILE_EDITOR_COPY[locale].actions[action];
+
+export const getMobileEditorImageScaleLabel = (locale: MobileEditorLocale): string =>
+  MOBILE_EDITOR_COPY[locale].imageScale;
+
+export const getMobileEditorImageWidthPresetLabel = (
+  preset: ImageWidthPresetId,
+  locale: MobileEditorLocale
+): string => MOBILE_EDITOR_COPY[locale].imageSizes[preset];
 
 export const getMobileEditorInputAttributes = (className: string): Record<string, string> => ({
   autocapitalize: "sentences",

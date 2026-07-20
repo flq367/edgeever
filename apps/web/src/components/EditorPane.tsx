@@ -55,7 +55,20 @@ import { RevisionHistoryDialog } from "./dialogs/RevisionHistoryDialog";
 import { api } from "@/lib/api";
 import { consumeStandaloneMobileEditorReturn, openStandaloneMobileEditor } from "@/lib/mobile-editor";
 import { cn, formatDateTime, parseTagsText } from "@/lib/utils";
-import { docToMarkdown, markdownToDoc, type Notebook, type MemoDetail, type MemoEditSession, type TiptapDoc } from "@edgeever/shared";
+import {
+  docToMarkdown,
+  markdownToDoc,
+  type Notebook,
+  type MemoDetail,
+  type MemoEditSession,
+  type TiptapDoc,
+} from "@edgeever/shared";
+import {
+  DEFAULT_IMAGE_WIDTH_PERCENT,
+  IMAGE_WIDTH_PRESETS,
+  clampImageWidth,
+  parseImageWidth,
+} from "@edgeever/shared/image-display";
 import { codeBlockLowlight } from "@/lib/code-block";
 import { compressImageForUpload } from "@/lib/image-compression";
 import { localDb, type MemoUpdateSyncPayload } from "@/lib/local-db";
@@ -69,15 +82,6 @@ const SUPPORTED_PASTE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/g
 const MOBILE_EDITOR_QUERY = "(max-width: 639px)";
 const EDITOR_AUTO_SAVE_DELAY_MS = 1200;
 const MOBILE_DRAFT_PERSIST_DELAY_MS = 800;
-const DEFAULT_IMAGE_WIDTH_PERCENT = 72;
-const MIN_IMAGE_WIDTH_PERCENT = 25;
-const MAX_IMAGE_WIDTH_PERCENT = 100;
-const IMAGE_WIDTH_PRESETS = [
-  { width: 35, labelKey: "editor.imageSizeSmall" },
-  { width: 50, labelKey: "editor.imageSizeMedium" },
-  { width: 72, labelKey: "editor.imageSizeLarge" },
-  { width: 100, labelKey: "editor.imageSizeFull" },
-] as const;
 
 type NoteSearchMatch = {
   from: number;
@@ -224,22 +228,6 @@ const getImageFilesFromDataTransfer = (dataTransfer: DataTransfer | null) => {
   const files = fileItems.length > 0 ? fileItems : Array.from(dataTransfer.files ?? []);
 
   return files.filter((file) => SUPPORTED_PASTE_IMAGE_TYPES.has(file.type));
-};
-
-const clampImageWidth = (width: number) =>
-  Math.min(MAX_IMAGE_WIDTH_PERCENT, Math.max(MIN_IMAGE_WIDTH_PERCENT, Math.round(width)));
-
-const parseImageWidth = (value: unknown) => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return clampImageWidth(value);
-  }
-
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const match = /(\d+(?:\.\d+)?)/.exec(value);
-  return match ? clampImageWidth(Number(match[1])) : null;
 };
 
 const ResizableImageNodeView = ({ editor, node, selected, updateAttributes }: NodeViewProps) => {

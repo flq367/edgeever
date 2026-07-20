@@ -6,9 +6,17 @@ import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import type { TiptapDoc } from "@edgeever/shared";
 import {
+  DEFAULT_IMAGE_WIDTH_PERCENT,
+  IMAGE_WIDTH_PRESETS,
+  clampImageWidth,
+  parseImageWidth,
+} from "@edgeever/shared/image-display";
+import {
   MOBILE_EDITOR_ACTIVE_FLAGS,
   MOBILE_EDITOR_TOOLBAR_ACTIONS,
   getMobileEditorInputAttributes,
+  getMobileEditorImageScaleLabel,
+  getMobileEditorImageWidthPresetLabel,
   getMobileEditorPlaceholder,
   getMobileEditorToolbarActionLabel,
   getMobileEditorToolbarLabel,
@@ -436,13 +444,105 @@ const resolveUrl = (source: string, baseUrl: string) => {
   return `${baseUrl.replace(/\/+$/, "")}${source}`;
 };
 
+const applyImageWidth = (
+  element: HTMLElement,
+  attributes: Record<string, unknown>
+): number => {
+  const width = parseImageWidth(attributes.width) ?? DEFAULT_IMAGE_WIDTH_PERCENT;
+  element.style.width = `${width}%`;
+  element.dataset.width = String(width);
+  return width;
+};
+
+const createMobileImageSizeControls = (
+  locale: "zh-CN" | "en-US",
+  updateWidth: (width: number) => void
+) => {
+  const controls = document.createElement("div");
+  controls.className = "edgeever-image-size-controls";
+  controls.contentEditable = "false";
+  controls.hidden = true;
+  controls.setAttribute("role", "group");
+  controls.setAttribute("aria-label", getMobileEditorImageScaleLabel(locale));
+
+  const buttons = IMAGE_WIDTH_PRESETS.map((preset) => {
+    const button = document.createElement("button");
+    const label = getMobileEditorImageWidthPresetLabel(preset.id, locale);
+    button.type = "button";
+    button.className = "edgeever-image-size-button";
+    button.setAttribute("aria-label", `${label}，${preset.width}%`);
+    button.setAttribute("aria-pressed", "false");
+
+    const labelNode = document.createElement("span");
+    labelNode.textContent = label;
+    const percentNode = document.createElement("span");
+    percentNode.className = "edgeever-image-size-percent";
+    percentNode.textContent = `${preset.width}%`;
+    button.append(labelNode, percentNode);
+
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      updateWidth(preset.width);
+    });
+    controls.append(button);
+    return { button, width: preset.width };
+  });
+
+  return {
+    dom: controls,
+    setActiveWidth: (width: number) => {
+      for (const item of buttons) {
+        const active = item.width === width;
+        item.button.classList.toggle("is-active", active);
+        item.button.setAttribute("aria-pressed", String(active));
+      }
+    },
+    setVisible: (visible: boolean) => {
+      controls.hidden = !visible;
+    },
+  };
+};
+
 const createProtectedImageExtension = (
   baseUrl: string,
   locale: "zh-CN" | "en-US",
   loadResource: (source: string) => Promise<string | null>
 ) => Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element) =>
+          parseImageWidth(element.getAttribute("data-width") ?? element.getAttribute("width") ?? element.style.width),
+        renderHTML: (attributes) => {
+          const width = parseImageWidth(attributes.width);
+          return width ? { "data-width": String(width), style: `width: ${width}%` } : {};
+        },
+      },
+    };
+  },
   addNodeView() {
-    return ({ node }) => {
+    return ({ editor, getPos, node }) => {
+      const updateWidth = (width: number) => {
+        const position = getPos();
+        if (typeof position !== "number") {
+          return;
+        }
+        editor
+          .chain()
+          .focus()
+          .setNodeSelection(position)
+          .updateAttributes("image", { width: clampImageWidth(width) })
+          .run();
+      };
+      const sizeControls = createMobileImageSizeControls(locale, updateWidth);
+
       if (isMobileImageUploadPlaceholderSource(node.attrs.src)) {
         const placeholder = document.createElement("div");
         placeholder.className = "edgeever-image-upload-placeholder";
@@ -467,10 +567,13 @@ const createProtectedImageExtension = (
         if (previewSource) {
           placeholder.append(preview);
         }
-        placeholder.append(overlay);
+        placeholder.append(overlay, sizeControls.dom);
+        sizeControls.setActiveWidth(applyImageWidth(placeholder, node.attrs));
 
         let requestId = 0;
         let renderedSource = String(node.attrs.src ?? "");
+        let completed = false;
+        let selected = false;
 
         const applyImageAttributes = (attributes: Record<string, unknown>) => {
           preview.alt = String(attributes.alt ?? "");
@@ -497,6 +600,11 @@ const createProtectedImageExtension = (
             preview.className = "";
             overlay.remove();
             placeholder.className = "edgeever-image-upload-result";
+            completed = true;
+            if (selected) {
+              placeholder.classList.add("is-selected");
+              sizeControls.setVisible(true);
+            }
             placeholder.removeAttribute("role");
             placeholder.removeAttribute("aria-live");
           };
@@ -534,6 +642,7 @@ const createProtectedImageExtension = (
               return false;
             }
             const source = String(updatedNode.attrs.src ?? "");
+            sizeControls.setActiveWidth(applyImageWidth(placeholder, updatedNode.attrs));
             if (isMobileImageUploadPlaceholderSource(source)) {
               return true;
             }
@@ -544,13 +653,29 @@ const createProtectedImageExtension = (
             loadCompletedImage(updatedNode.attrs);
             return true;
           },
+          selectNode: () => {
+            selected = true;
+            if (completed) {
+              placeholder.classList.add("is-selected");
+              sizeControls.setVisible(true);
+            }
+          },
+          deselectNode: () => {
+            selected = false;
+            placeholder.classList.remove("is-selected");
+            sizeControls.setVisible(false);
+          },
           destroy: () => {
             requestId += 1;
           },
         };
       }
 
+      const wrapper = document.createElement("figure");
+      wrapper.className = "edgeever-image-node";
+      wrapper.contentEditable = "false";
       const image = document.createElement("img");
+      wrapper.append(image, sizeControls.dom);
       const imageType = node.type;
       let requestId = 0;
 
@@ -560,6 +685,7 @@ const createProtectedImageExtension = (
 
       const renderNode = (attributes: Record<string, unknown>) => {
         clearRequest();
+        sizeControls.setActiveWidth(applyImageWidth(wrapper, attributes));
         const source = String(attributes.src ?? "");
         const alt = String(attributes.alt ?? "");
         const title = String(attributes.title ?? "");
@@ -594,13 +720,21 @@ const createProtectedImageExtension = (
       renderNode(node.attrs);
 
       return {
-        dom: image,
+        dom: wrapper,
         update: (updatedNode) => {
           if (updatedNode.type !== imageType) {
             return false;
           }
           renderNode(updatedNode.attrs);
           return true;
+        },
+        selectNode: () => {
+          wrapper.classList.add("is-selected");
+          sizeControls.setVisible(true);
+        },
+        deselectNode: () => {
+          wrapper.classList.remove("is-selected");
+          sizeControls.setVisible(false);
         },
         destroy: clearRequest,
       };
@@ -642,7 +776,12 @@ const insertImageUploadPlaceholder = (
   editor.chain().command(({ tr, dispatch }) => {
     const from = Math.min(selection?.from ?? tr.selection.from, tr.doc.content.size);
     const to = Math.min(Math.max(selection?.to ?? tr.selection.to, from), tr.doc.content.size);
-    tr.replaceRangeWith(from, to, imageType.create({ alt, src: source, title: previewDataUrl }));
+    tr.replaceRangeWith(from, to, imageType.create({
+      alt,
+      src: source,
+      title: previewDataUrl,
+      width: DEFAULT_IMAGE_WIDTH_PERCENT,
+    }));
     tr.setMeta(TRANSIENT_IMAGE_UPLOAD_META, true);
     dispatch?.(tr);
     return true;
@@ -704,11 +843,18 @@ const getEditorStyles = (theme: "light" | "dark") => `
   .edgeever-editor-content code { border-radius: 4px; padding: 2px 4px; background: ${theme === "dark" ? "#1e293b" : "#f1f5f9"}; }
   .edgeever-editor-content pre code { padding: 0; background: transparent; }
   .edgeever-editor-content img { display: block; max-width: 100%; height: auto; margin: 14px auto; border-radius: 10px; }
-  .edgeever-image-upload-placeholder { position: relative; min-height: 112px; margin: 14px 0; overflow: hidden; border-radius: 10px; background: ${theme === "dark" ? "#1e293b" : "#f1f5f9"}; }
+  .edgeever-image-upload-placeholder { position: relative; max-width: 100%; min-height: 112px; margin: 14px auto; overflow: hidden; border-radius: 10px; background: ${theme === "dark" ? "#1e293b" : "#f1f5f9"}; }
   .edgeever-image-upload-preview { display: block; width: 100%; max-height: 360px; margin: 0 !important; object-fit: contain; border-radius: 10px; }
   .edgeever-image-upload-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; border-radius: 10px; background: rgba(15, 23, 42, 0.38); color: #fff; font-size: 14px; font-weight: 600; text-shadow: 0 1px 2px rgba(15, 23, 42, 0.45); }
-  .edgeever-image-upload-result { margin: 14px 0; }
-  .edgeever-image-upload-result > img { margin: 0 auto; }
+  .edgeever-image-node, .edgeever-image-upload-result { position: relative; display: block; max-width: 100%; margin: 14px auto; line-height: 0; }
+  .edgeever-image-node > img, .edgeever-image-upload-result > img { width: 100%; margin: 0; }
+  .edgeever-image-node.is-selected > img, .edgeever-image-upload-result.is-selected > img { outline: 2px solid #0f766e; outline-offset: 3px; }
+  .edgeever-image-size-controls { position: absolute; left: 50%; bottom: 8px; z-index: 2; display: flex; width: max-content; max-width: calc(100vw - 40px); align-items: center; gap: 3px; transform: translateX(-50%); border: 1px solid ${theme === "dark" ? "#475569" : "#bbf7d0"}; border-radius: 9px; padding: 4px; background: ${theme === "dark" ? "rgba(15, 23, 42, 0.96)" : "rgba(255, 255, 255, 0.96)"}; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.2); line-height: 1.15; }
+  .edgeever-image-size-controls[hidden] { display: none; }
+  .edgeever-image-size-button { display: inline-flex; min-width: 52px; min-height: 44px; appearance: none; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; border-radius: 7px; padding: 4px 7px; background: transparent; color: ${theme === "dark" ? "#cbd5e1" : "#475569"}; font: inherit; font-size: 12px; font-weight: 700; }
+  .edgeever-image-size-button.is-active { background: ${theme === "dark" ? "#134e4a" : "#ccfbf1"}; color: ${theme === "dark" ? "#99f6e4" : "#0f766e"}; }
+  .edgeever-image-size-percent { color: ${theme === "dark" ? "#94a3b8" : "#94a3b8"}; font-size: 10px; font-weight: 600; }
+  .edgeever-image-size-button.is-active .edgeever-image-size-percent { color: inherit; }
   .edgeever-image-upload-spinner { width: 18px; height: 18px; border: 2px solid ${theme === "dark" ? "#475569" : "#cbd5e1"}; border-top-color: #0f766e; border-radius: 999px; animation: edgeever-image-upload-spin 0.8s linear infinite; }
   @keyframes edgeever-image-upload-spin { to { transform: rotate(360deg); } }
   .edgeever-editor-content hr { margin: 24px 0; border: 0; border-top: 1px solid #cbd5e1; }

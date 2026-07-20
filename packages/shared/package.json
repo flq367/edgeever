@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./image-display": "./src/image-display.ts",
     "./i18n": "./src/i18n/index.ts",
     "./mobile-editor": "./src/mobile-editor.ts",
     "./mobile-ui": "./src/mobile-ui.ts"

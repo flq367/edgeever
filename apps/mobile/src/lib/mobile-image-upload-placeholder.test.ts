@@ -11,7 +11,7 @@ test("removes transient image upload placeholders before a note is persisted", (
     content: [
       { type: "paragraph", content: [{ type: "text", text: "before" }] },
       { type: "image", attrs: { alt: "图片上传中…", src: placeholderSource } },
-      { type: "image", attrs: { alt: "done", src: "/api/v1/resources/res_1" } },
+      { type: "image", attrs: { alt: "done", src: "/api/v1/resources/res_1", width: 50 } },
     ],
   });
 
@@ -19,7 +19,7 @@ test("removes transient image upload placeholders before a note is persisted", (
     type: "doc",
     content: [
       { type: "paragraph", content: [{ type: "text", text: "before" }] },
-      { type: "image", attrs: { alt: "done", src: "/api/v1/resources/res_1" } },
+      { type: "image", attrs: { alt: "done", src: "/api/v1/resources/res_1", width: 50 } },
     ],
   });
 });
