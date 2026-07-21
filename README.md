@@ -9,6 +9,8 @@ EdgeEver is an open-source, self-hosted, Cloudflare-native notes workspace. It k
 > 💡 **Serverless & 100% Free Forever**
 > EdgeEver uses a pure Serverless architecture. **No server purchase or VPS rental is required**, and there is no need to configure Docker or SSL certificates. By running within Cloudflare's free quotas, personal use is **100% free with zero maintenance**.
 
+> ⭐ If EdgeEver is useful to you, consider giving it a Star. Your support helps more people discover the project.
+
 ## Why EdgeEver
 
 Many long-time **Evernote** users only need a **reliable, open, and responsive** personal knowledge base. However, existing mainstream solutions all have their pain points:
