@@ -9,6 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   X,
@@ -1391,133 +1392,191 @@ export const MemoListPane = ({
         )}
       </div>
 
-      {/* Controlled Right Click context menu for single note on Desktop using absolute placement */}
-      {memoContextMenu && (
-        <div style={{ position: "fixed", left: memoContextMenu.x, top: memoContextMenu.y, zIndex: 100 }}>
-          <DropdownMenu open={true} onOpenChange={(open) => { if (!open) setMemoContextMenu(null); }}>
-            <DropdownMenuTrigger asChild>
-              <span className="sr-only" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="max-h-[calc(100dvh-1.5rem)] w-56 max-w-[calc(100vw-1.5rem)] overflow-y-auto bg-white border border-slate-200 rounded-md py-1 shadow-md"
+      {/* Controlled Right Click context menu for single note on Desktop */}
+      {memoContextMenu &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              left: memoContextMenu.x,
+              top: memoContextMenu.y,
+              zIndex: 100,
+            }}
+          >
+            <DropdownMenu
+              open={true}
+              onOpenChange={(open) => {
+                if (!open) setMemoContextMenu(null);
+              }}
             >
-              <DropdownMenuItem
-                className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                onClick={() => {
-                  const { memo } = memoContextMenu;
-                  setMemoContextMenu(null);
-                  onOpenMemo(memo.id);
-                }}
+              <DropdownMenuTrigger asChild>
+                <span
+                  style={{
+                    display: "block",
+                    width: 1,
+                    height: 1,
+                    pointerEvents: "none",
+                  }}
+                />
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent
+                align="start"
+                side="bottom"
+                sideOffset={0}
+                className="max-h-[calc(100dvh-1.5rem)] w-56 max-w-[calc(100vw-1.5rem)] overflow-y-auto bg-white border border-slate-200 rounded-md py-1 shadow-md"
               >
-                <FileIcon className="h-4 w-4" />
-                {t("memoList.openMemo")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                onClick={() => {
-                  const { memo } = memoContextMenu;
-                  setMemoContextMenu(null);
-                  handleToggleMemo(memo.id);
-                }}
-              >
-                <CheckSquare className="h-4 w-4" />
-                {t("memoList.selectMemo")}
-              </DropdownMenuItem>
-              {view !== "trash" && (
                 <DropdownMenuItem
                   className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                  disabled={isPinning}
                   onClick={() => {
                     const { memo } = memoContextMenu;
                     setMemoContextMenu(null);
-                    onTogglePinMemo(memo);
+                    onOpenMemo(memo.id);
                   }}
                 >
-                  <Star className={cn("h-4 w-4", memoContextMenu.memo.isPinned && "fill-current text-slate-700")} />
-                  {memoContextMenu.memo.isPinned ? t("memoList.unpin") : t("memoList.pinMemo")}
+                  <FileIcon className="h-4 w-4" />
+                  {t("memoList.openMemo")}
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator className="my-1 h-px bg-slate-100" />
-              {view === "trash" ? (
-                <>
-                  <DropdownMenuItem
-                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                    onClick={() => {
-                      const { memo } = memoContextMenu;
-                      setMemoContextMenu(null);
-                      onRestoreMemo(memo.id);
-                    }}
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    {t("memoList.restoreMemo")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-rose-700 hover:bg-rose-50 cursor-pointer outline-none"
-                    onClick={() => {
-                      const { memo } = memoContextMenu;
-                      setMemoContextMenu(null);
-                      onDeleteMemo(memo.id);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    {t("memoList.permanentDelete")}
-                  </DropdownMenuItem>
-                </>
-              ) : (
-                <>
-                  <DropdownMenuItem
-                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                    disabled={moveNotebookOptions.length === 0}
-                    onClick={() => setContextMoveOpen((value) => !value)}
-                  >
-                    <Folder className="h-4 w-4" />
-                    <span className="min-w-0 flex-1 truncate">{t("memoList.moveToNotebook")}</span>
-                    <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", contextMoveOpen && "rotate-90")} />
-                  </DropdownMenuItem>
-                  {contextMoveOpen && (
-                    <div className="max-h-52 overflow-y-auto border-y border-slate-100 bg-slate-50/60 py-1">
-                      {moveNotebookOptions.map((option: any) => (
-                        <button
-                          key={option.id}
-                          className={cn(
-                            "flex h-9 w-full items-center gap-2 px-3 text-left text-sm transition hover:bg-white",
-                            option.id === memoContextMenu.memo.notebookId ? "font-semibold text-slate-950" : "text-slate-700"
-                          )}
-                          style={{ paddingLeft: `${12 + option.depth * 14}px` }}
-                          type="button"
-                          disabled={option.id === memoContextMenu.memo.notebookId}
-                          onClick={() => {
-                            const { memo } = memoContextMenu;
-                            setContextMoveOpen(false);
-                            setMemoContextMenu(null);
-                            onMoveMemo(memo.id, option.id);
-                          }}
-                        >
-                          <NotebookIcon className="h-4 w-4 shrink-0" />
-                          <span className="min-w-0 flex-1 truncate">{option.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <DropdownMenuItem
-                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-rose-700 hover:bg-rose-50 cursor-pointer outline-none"
-                    onClick={() => {
-                      const { memo } = memoContextMenu;
-                      setMemoContextMenu(null);
-                      onDeleteMemo(memo.id);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    {t("memoList.deleteMemo")}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
 
+                <DropdownMenuItem
+                  className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                  onClick={() => {
+                    const { memo } = memoContextMenu;
+                    setMemoContextMenu(null);
+                    handleToggleMemo(memo.id);
+                  }}
+                >
+                  <CheckSquare className="h-4 w-4" />
+                  {t("memoList.selectMemo")}
+                </DropdownMenuItem>
+
+                {view !== "trash" && (
+                  <DropdownMenuItem
+                    className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                    disabled={isPinning}
+                    onClick={() => {
+                      const { memo } = memoContextMenu;
+                      setMemoContextMenu(null);
+                      onTogglePinMemo(memo);
+                    }}
+                  >
+                    <Star
+                      className={cn(
+                        "h-4 w-4",
+                        memoContextMenu.memo.isPinned &&
+                          "fill-current text-slate-700"
+                      )}
+                    />
+                    {memoContextMenu.memo.isPinned
+                      ? t("memoList.unpin")
+                      : t("memoList.pinMemo")}
+                  </DropdownMenuItem>
+                )}
+
+                <DropdownMenuSeparator className="my-1 h-px bg-slate-100" />
+
+                {view === "trash" ? (
+                  <>
+                    <DropdownMenuItem
+                      className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                      onClick={() => {
+                        const { memo } = memoContextMenu;
+                        setMemoContextMenu(null);
+                        onRestoreMemo(memo.id);
+                      }}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      {t("memoList.restoreMemo")}
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-rose-700 hover:bg-rose-50 cursor-pointer outline-none"
+                      onClick={() => {
+                        const { memo } = memoContextMenu;
+                        setMemoContextMenu(null);
+                        onDeleteMemo(memo.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {t("memoList.permanentDelete")}
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  <>
+                    <DropdownMenuItem
+                      className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
+                      disabled={moveNotebookOptions.length === 0}
+                      onClick={() =>
+                        setContextMoveOpen((value) => !value)
+                      }
+                    >
+                      <Folder className="h-4 w-4" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {t("memoList.moveToNotebook")}
+                      </span>
+                      <ChevronRight
+                        className={cn(
+                          "h-4 w-4 transition-transform duration-200",
+                          contextMoveOpen && "rotate-90"
+                        )}
+                      />
+                    </DropdownMenuItem>
+
+                    {contextMoveOpen && (
+                      <div className="max-h-52 overflow-y-auto border-y border-slate-100 bg-slate-50/60 py-1">
+                        {moveNotebookOptions.map((option: any) => (
+                          <button
+                            key={option.id}
+                            className={cn(
+                              "flex h-9 w-full items-center gap-2 px-3 text-left text-sm transition hover:bg-white",
+                              option.id === memoContextMenu.memo.notebookId
+                                ? "font-semibold text-slate-950"
+                                : "text-slate-700"
+                            )}
+                            style={{
+                              paddingLeft: `${12 + option.depth * 14}px`,
+                            }}
+                            type="button"
+                            disabled={
+                              option.id ===
+                              memoContextMenu.memo.notebookId
+                            }
+                            onClick={() => {
+                              const { memo } = memoContextMenu;
+                              setContextMoveOpen(false);
+                              setMemoContextMenu(null);
+                              onMoveMemo(memo.id, option.id);
+                            }}
+                          >
+                            <NotebookIcon className="h-4 w-4 shrink-0" />
+                            <span className="min-w-0 flex-1 truncate">
+                              {option.name}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <DropdownMenuItem
+                      className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-rose-700 hover:bg-rose-50 cursor-pointer outline-none"
+                      onClick={() => {
+                        const { memo } = memoContextMenu;
+                        setMemoContextMenu(null);
+                        onDeleteMemo(memo.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {t("memoList.deleteMemo")}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>,
+          document.body
+        )}
+
+      
       {selectionMode && (
         <MobileSelectionActionBar
           canDelete={selectedMemoIds.size > 0 && !isDeleting}
