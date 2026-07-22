@@ -495,21 +495,6 @@ export const NotebookPane = ({
 
       <footer className="border-t border-slate-200 bg-white/80 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-sm">
         <div className="space-y-1">
-          {demoMode && onResetDemo && (
-            <button
-              onClick={onResetDemo}
-              disabled={isResettingDemo}
-              className="flex h-8 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-semibold leading-none text-amber-700 hover:bg-amber-50 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70 disabled:opacity-50"
-              type="button"
-              title={t("demo.resetTooltip")}
-              aria-label={t("demo.resetButton")}
-            >
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                <RotateCcw className={cn("h-4 w-4 text-amber-600", isResettingDemo && "animate-spin")} />
-              </span>
-              <span className="min-w-0 flex-1 truncate">{isResettingDemo ? t("demo.resetting") : t("demo.resetButton")}</span>
-            </button>
-          )}
           {isInstallable && (
             <button
               onClick={install}

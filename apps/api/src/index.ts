@@ -2633,7 +2633,7 @@ const worker = {
       return;
     }
 
-    ctx.waitUntil(resetDemoData(env, controller.scheduledTime));
+    ctx.waitUntil(resetDemoData(env, controller.scheduledTime, { resetCredentials: true }));
   },
 };
 
@@ -5353,6 +5353,19 @@ const ensureDemoSeed = async (
     }
 
     const contentJson = markdownToDoc(memo.markdown);
+    const applyDemoImageWidths = (nodes: any[]) => {
+      for (const node of nodes) {
+        if (node.type === "image") {
+          node.attrs = { ...node.attrs, width: 35 };
+        }
+        if (Array.isArray(node.content)) {
+          applyDemoImageWidths(node.content);
+        }
+      }
+    };
+    if (Array.isArray(contentJson.content)) {
+      applyDemoImageWidths(contentJson.content);
+    }
     const contentText = docToText(contentJson);
     const contentHash = await sha256(memo.markdown + JSON.stringify(contentJson));
 
@@ -5530,7 +5543,11 @@ const ensureDemoSeed = async (
   }
 };
 
-const resetDemoData = async (env: Bindings, scheduledTime: number) => {
+const resetDemoData = async (
+  env: Bindings,
+  scheduledTime: number,
+  options: { resetCredentials?: boolean } = {}
+) => {
   const db = env.DB;
   const now = isoNow();
   const demoUsername = env.EDGE_EVER_AUTH_USERNAME?.trim() || "admin";
@@ -5539,8 +5556,6 @@ const resetDemoData = async (env: Bindings, scheduledTime: number) => {
     env.EDGE_EVER_AUTH_PASSWORD_HASH,
     hashPassword,
   );
-  const memoPlaceholders = DEMO_SEED_MEMO_IDS.map(() => "?").join(", ");
-  const notebookPlaceholders = DEMO_SEED_NOTEBOOK_IDS.map(() => "?").join(", ");
   const resourceRows = await db.prepare(`SELECT object_key FROM resources`).all<{ object_key: string }>();
   const objectKeys = resourceRows.results.map((resource) => resource.object_key);
 
@@ -5553,15 +5568,15 @@ const resetDemoData = async (env: Bindings, scheduledTime: number) => {
     db.prepare(`DELETE FROM memos_fts`),
     db.prepare(`DELETE FROM resources`),
     db.prepare(`DELETE FROM memo_revisions`),
-    db.prepare(`DELETE FROM memo_contents WHERE memo_id NOT IN (${memoPlaceholders})`).bind(...DEMO_SEED_MEMO_IDS),
-    db.prepare(`DELETE FROM memos WHERE id NOT IN (${memoPlaceholders})`).bind(...DEMO_SEED_MEMO_IDS),
+    db.prepare(`DELETE FROM memo_contents`),
+    db.prepare(`DELETE FROM memos`),
     db.prepare(`UPDATE notebooks SET parent_id = NULL`),
-    db.prepare(`DELETE FROM notebooks WHERE id NOT IN (${notebookPlaceholders})`).bind(...DEMO_SEED_NOTEBOOK_IDS),
+    db.prepare(`DELETE FROM notebooks`),
     db.prepare(`DELETE FROM api_tokens`),
     db.prepare(`DELETE FROM audit_events`),
   ];
 
-  if (demoPasswordHash) {
+  if (options.resetCredentials && demoPasswordHash) {
     resetStatements.push(
       db.prepare(`UPDATE users SET password_hash = ?, updated_at = ? WHERE username = ? AND is_disabled = 0`)
         .bind(demoPasswordHash, now, demoUsername),
