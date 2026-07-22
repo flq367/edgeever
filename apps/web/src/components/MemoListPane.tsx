@@ -1413,7 +1413,6 @@ export const MemoListPane = ({
                 <FileIcon className="h-4 w-4" />
                 {t("memoList.openMemo")}
               </DropdownMenuItem>
-              {/*
               <DropdownMenuItem
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
                 onClick={() => {
@@ -1425,7 +1424,6 @@ export const MemoListPane = ({
                 <CheckSquare className="h-4 w-4" />
                 {t("memoList.selectMemo")}
               </DropdownMenuItem>
-              */}
               {view !== "trash" && (
                 <DropdownMenuItem
                   className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
