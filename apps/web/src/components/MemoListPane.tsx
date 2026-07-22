@@ -1440,9 +1440,14 @@ export const MemoListPane = ({
 
                 <DropdownMenuItem
                   className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
-                  onClick={() => {
+                  onSelect={() => {
                     const { memo } = memoContextMenu;
                     setMemoContextMenu(null);
+
+                    if (!selectionMode) {
+                      onEnterSelectionMode();
+                    }
+
                     handleToggleMemo(memo.id);
                   }}
                 >
@@ -1506,9 +1511,10 @@ export const MemoListPane = ({
                     <DropdownMenuItem
                       className="flex h-9 w-full items-center gap-2 px-3 text-left text-sm text-slate-700 hover:bg-slate-50 cursor-pointer outline-none"
                       disabled={moveNotebookOptions.length === 0}
-                      onClick={() =>
-                        setContextMoveOpen((value) => !value)
-                      }
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        setContextMoveOpen((value) => !value);
+                      }}
                     >
                       <Folder className="h-4 w-4" />
                       <span className="min-w-0 flex-1 truncate">
@@ -1523,7 +1529,11 @@ export const MemoListPane = ({
                     </DropdownMenuItem>
 
                     {contextMoveOpen && (
-                      <div className="max-h-52 overflow-y-auto border-y border-slate-100 bg-slate-50/60 py-1">
+                      <div
+                        className="max-h-52 overflow-y-auto border-y border-slate-100 bg-slate-50/60 py-1"
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         {moveNotebookOptions.map((option: any) => (
                           <button
                             key={option.id}
