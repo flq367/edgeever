@@ -2468,105 +2468,112 @@ export const WorkspaceApp = ({
                   : (visibleActivePane === "memos" ? "block lg:hidden" : "hidden lg:hidden")
             )}
           >
-            <MemoListPane
-              notebook={selectedNotebook}
-              notebooks={notebooks}
-              view={memoView}
-              memos={memos}
-              totalMemoCount={totalMemoCount}
-              hasMoreMemos={Boolean(memosQuery.hasNextPage)}
-              isLoadingMoreMemos={memosQuery.isFetchingNextPage}
-              selectedMemoId={selectedMemoId}
-              selectedMemoIds={selectedMemoIds}
-              selectionMode={memoSelectionModeActive}
-              search={search}
-              filterMode={memoFilterMode}
-              sortMode={memoSortMode}
-              mobileSearchActive={mobileSearchActive}
-              searchFocusToken={mobileSearchFocusToken}
-              onFilterModeChange={setMemoFilterMode}
-              onSortModeChange={setMemoSortMode}
-              onLoadMoreMemos={handleLoadMoreMemos}
-              canCreateMemo={canCreateMemo}
-              isLoading={memosQuery.isLoading}
-              isRefreshing={memosQuery.isFetching}
-              isError={memosQuery.isError}
-              isCreating={createMemoMutation.isPending}
-              isMerging={mergeMutation.isPending}
-              isMoving={moveMemosMutation.isPending}
-              isPinning={pinMemosMutation.isPending}
-              isDeleting={deleteMemosMutation.isPending || deleteMemoMutation.isPending}
-              multiSelectKeyDown={multiSelectKeyDown}
-              onRetry={() => void memosQuery.refetch()}
-              onOpenNotebookPicker={() => setMobileNotebookPickerOpen(true)}
-              onSearch={setSearch}
-              onCancelMobileSearch={handleCancelMobileSearch}
-              onCreateMemo={handleCreateMemo}
-              onClearSelection={clearMemoSelection}
-              onEnterSelectionMode={enterMemoSelectionMode}
-              onReplaceSelection={replaceMemoSelection}
-              onOpenAssets={handleOpenAssets}
-              onOpenTags={handleOpenTags}
-              onOpenSettings={handleOpenSettings}
-              onSyncMemos={() => void syncMemosManually()}
-              isSyncingMemos={isManualMemoSyncing || isSyncingQueuedChanges || isPullRefreshing || memosQuery.isRefetching}
-              canSyncMemos={isOnline}
-              onOpenTrash={() => {
-                navigateWorkspaceTrash();
-                setMemoView("trash");
-                setSelectedNotebookId(null);
-                setMobileBottomNavActive("home");
-                clearMemoSelection();
-                clearPendingCreatedMemo();
-                setCreatedMemoEditId(null);
-                setSelectedMemoId(null);
-                setActivePane("memos");
-              }}
-              onBackFromTrash={handleSelectAllMemos}
-              onOpenMemo={(memoId) => {
-                navigateWorkspaceHome();
-                setRightView("editor");
-                clearPendingCreatedMemo();
-                setCreatedMemoEditId(null);
-                setSelectedMemoId(memoId);
-                setActivePane("editor");
-              }}
-              onToggleMemo={(memoId, rangeMemoIds) => {
-                setMemoSelectionMode(true);
-                setSelectedMemoIds((current) => {
-                  if (!rangeMemoIds?.length) {
-                    return toggleMobileMemoSelection(current, memoId);
-                  }
-                  const next = new Set(current);
-                  for (const rangeMemoId of rangeMemoIds) {
-                    next.add(rangeMemoId);
-                  }
-                  return next;
-                });
-              }}
-              onMerge={handleMerge}
-              onDeleteMemo={handleDeleteMemoFromList}
-              onEmptyTrash={handleEmptyTrash}
-              onRestoreMemo={handleRestoreMemoFromList}
-              onMoveMemo={handleMoveMemoFromList}
-              onTogglePinMemo={handleToggleMemoPinned}
-              onPinSelectedMemos={handlePinSelectedMemos}
-              onDeleteSelectedMemos={handleDeleteSelectedMemos}
-              onMoveSelectedMemos={handleMoveSelectedMemos}
-              mobileListActionsOpen={mobileListActionsOpen}
-              setMobileListActionsOpen={setMobileListActionsOpen}
-              mobileMoveOpen={mobileMoveOpen}
-              setMobileMoveOpen={setMobileMoveOpen}
-              mobileMoreOpen={mobileMoreOpen}
-              setMobileMoreOpen={setMobileMoreOpen}
-              desktopFilterOpen={desktopFilterOpen}
-              setDesktopFilterOpen={setDesktopFilterOpen}
-              desktopSortOpen={desktopSortOpen}
-              setDesktopSortOpen={setDesktopSortOpen}
-              desktopActionsOpen={desktopActionsOpen}
-              setDesktopActionsOpen={setDesktopActionsOpen}
-            />
-            <div
+            <div className="relative h-full min-h-0">
+              <MemoListPane
+                notebook={selectedNotebook}
+                notebooks={notebooks}
+                view={memoView}
+                memos={memos}
+                totalMemoCount={totalMemoCount}
+                hasMoreMemos={Boolean(memosQuery.hasNextPage)}
+                isLoadingMoreMemos={memosQuery.isFetchingNextPage}
+                selectedMemoId={selectedMemoId}
+                selectedMemoIds={selectedMemoIds}
+                selectionMode={memoSelectionModeActive}
+                search={search}
+                filterMode={memoFilterMode}
+                sortMode={memoSortMode}
+                mobileSearchActive={mobileSearchActive}
+                searchFocusToken={mobileSearchFocusToken}
+                onFilterModeChange={setMemoFilterMode}
+                onSortModeChange={setMemoSortMode}
+                onLoadMoreMemos={handleLoadMoreMemos}
+                canCreateMemo={canCreateMemo}
+                isLoading={memosQuery.isLoading}
+                isRefreshing={memosQuery.isFetching}
+                isError={memosQuery.isError}
+                isCreating={createMemoMutation.isPending}
+                isMerging={mergeMutation.isPending}
+                isMoving={moveMemosMutation.isPending}
+                isPinning={pinMemosMutation.isPending}
+                isDeleting={deleteMemosMutation.isPending || deleteMemoMutation.isPending}
+                multiSelectKeyDown={multiSelectKeyDown}
+                onRetry={() => void memosQuery.refetch()}
+                onOpenNotebookPicker={() => setMobileNotebookPickerOpen(true)}
+                onSearch={setSearch}
+                onCancelMobileSearch={handleCancelMobileSearch}
+                onCreateMemo={handleCreateMemo}
+                onClearSelection={clearMemoSelection}
+                onEnterSelectionMode={enterMemoSelectionMode}
+                onReplaceSelection={replaceMemoSelection}
+                onOpenAssets={handleOpenAssets}
+                onOpenTags={handleOpenTags}
+                onOpenSettings={handleOpenSettings}
+                onSyncMemos={() => void syncMemosManually()}
+                isSyncingMemos={isManualMemoSyncing || isSyncingQueuedChanges || isPullRefreshing || memosQuery.isRefetching}
+                canSyncMemos={isOnline}
+                onOpenTrash={() => {
+                  navigateWorkspaceTrash();
+                  setMemoView("trash");
+                  setSelectedNotebookId(null);
+                  setMobileBottomNavActive("home");
+                  clearMemoSelection();
+                  clearPendingCreatedMemo();
+                  setCreatedMemoEditId(null);
+                  setSelectedMemoId(null);
+                  setActivePane("memos");
+                }}
+                onBackFromTrash={handleSelectAllMemos}
+                onOpenMemo={(memoId) => {
+                  navigateWorkspaceHome();
+                  setRightView("editor");
+                  clearPendingCreatedMemo();
+                  setCreatedMemoEditId(null);
+                  setSelectedMemoId(memoId);
+                  setActivePane("editor");
+                }}
+                onToggleMemo={(memoId, rangeMemoIds) => {
+                  setMemoSelectionMode(true);
+                  setSelectedMemoIds((current) => {
+                    if (!rangeMemoIds?.length) {
+                      return toggleMobileMemoSelection(current, memoId);
+                    }
+                    const next = new Set(current);
+                    for (const rangeMemoId of rangeMemoIds) {
+                      next.add(rangeMemoId);
+                    }
+                    return next;
+                  });
+                }}
+                onMerge={handleMerge}
+                onDeleteMemo={handleDeleteMemoFromList}
+                onEmptyTrash={handleEmptyTrash}
+                onRestoreMemo={handleRestoreMemoFromList}
+                onMoveMemo={handleMoveMemoFromList}
+                onTogglePinMemo={handleToggleMemoPinned}
+                onPinSelectedMemos={handlePinSelectedMemos}
+                onDeleteSelectedMemos={handleDeleteSelectedMemos}
+                onMoveSelectedMemos={handleMoveSelectedMemos}
+                mobileListActionsOpen={mobileListActionsOpen}
+                setMobileListActionsOpen={setMobileListActionsOpen}
+                mobileMoveOpen={mobileMoveOpen}
+                setMobileMoveOpen={setMobileMoveOpen}
+                mobileMoreOpen={mobileMoreOpen}
+                setMobileMoreOpen={setMobileMoreOpen}
+                desktopFilterOpen={desktopFilterOpen}
+                setDesktopFilterOpen={setDesktopFilterOpen}
+                desktopSortOpen={desktopSortOpen}
+                setDesktopSortOpen={setDesktopSortOpen}
+                desktopActionsOpen={desktopActionsOpen}
+                setDesktopActionsOpen={setDesktopActionsOpen}
+              />
+
+              {memoSelectionModeActive && (
+                <div className="absolute left-3 top-3 z-50 hidden lg:block">
+                  {memoSelectionActionBar}
+                </div>
+              )}
+            </div>            <div
               className="absolute inset-y-0 right-[-3px] z-20 hidden w-1.5 cursor-col-resize transition hover:bg-slate-300/70 focus-visible:bg-slate-400/80 focus-visible:outline-none lg:block"
               role="separator"
               aria-orientation="vertical"
@@ -2618,7 +2625,7 @@ export const WorkspaceApp = ({
                     searchFocusToken={noteSearchFocusToken}
                     replaceFocusToken={noteReplaceFocusToken}
                     imageCompressionEnabled={imageCompressionEnabled}
-                    selectionActionBar={memoSelectionActionBar}
+                    selectionActionBar={null}
                     hasNextMemo={Boolean(nextMemoId)}
                     hasPreviousMemo={Boolean(previousMemoId)}
                     onBackToList={() => {
